@@ -2,6 +2,8 @@
 
 * One logical change per commit
 * Do not implement anything that should instead be added in upstream APIs
+* Do not make local edits to `iq_stream.proto`. Instead tell the user that
+  upstream copy needs updating.
 
 ## Commit messages
 
