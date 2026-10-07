@@ -51,14 +51,19 @@ Public headers live under `gnuradio/iqstream`.
 Run a local finite example from the build tree:
 
 ```sh
-PYTHONPATH="$PWD/build/python" /usr/bin/python3 examples/roundtrip.py
+LD_LIBRARY_PATH="$PWD/build" PYTHONPATH="$PWD/build/python" \
+  /usr/bin/python3 examples/roundtrip.py
 ```
 
 `examples/iqstream_roundtrip.grc` exercises all four block types. For an
 uninstalled build, set `GRC_BLOCKS_PATH="$PWD/grc"` and
-`PYTHONPATH="$PWD/build/python"` before opening it in Companion. The shared server
+`PYTHONPATH="$PWD/build/python"` and `LD_LIBRARY_PATH="$PWD/build"` before opening
+it in Companion. The shared server
 variable is passed to server blocks; client blocks accept either that variable
 or a quoted address in their Server or Address field.
+If a copy is already installed, reinstall after editing the GRC definitions and
+restart Companion; GNU Radio 3.10.12 can load installed definitions after
+`GRC_BLOCKS_PATH`, overriding them.
 
 ## Configuration and lifetime
 
@@ -163,6 +168,12 @@ For RustRadio interoperability, explicitly choose:
 ```python
 options.profile = iqstream.metadata_profile.RUSTRADIO
 ```
+
+In Companion's IQ Stream Source, select **RustRadio scalar** for Metadata
+Profile. Match Loss Policy to the remote RustRadio sink: `blocking(true)` requires
+**Lossless**, while `blocking(false)` requires **Allow gaps**. A TCP connection
+can exist even when stream negotiation fails; failures are logged to the console
+and retained in `status().message`.
 
 This selects its five scalar kinds, enables STRING-to-symbol conversion, exports
 PMT symbols as STRING, and explicitly narrows real metadata to FLOAT32 (including

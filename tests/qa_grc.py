@@ -2,9 +2,10 @@
 """Compile and execute all four GRC blocks using the installed GNU Radio compiler."""
 import argparse
 import importlib.util
+import os
 from pathlib import Path
 import subprocess
-from gnuradio import iqstream
+from gnuradio import gr, iqstream
 from qa_interop import run_graph
 
 
@@ -15,9 +16,16 @@ def main():
     root = Path(__file__).resolve().parents[1]
     output = args.build.resolve() / "grc-generated"
     output.mkdir(parents=True, exist_ok=True)
+    # GNU Radio 3.10 loads later block definitions last. An installed copy must
+    # not shadow the source definitions being tested.
+    environment = os.environ.copy()
+    environment["GRC_BLOCKS_PATH"] = ""
+    environment["GR_CONF_GRC_GLOBAL_BLOCKS_PATH"] = os.pathsep.join((
+        gr.prefs().get_string("grc", "global_blocks_path", ""), str(root / "grc")))
+    environment["XDG_CACHE_HOME"] = str(args.build.resolve() / "cache")
     subprocess.run(["grcc", "-o", str(output),
                     str(root / "examples/iqstream_roundtrip.grc")], check=True,
-                   timeout=60)
+                   timeout=60, env=environment)
     spec = importlib.util.spec_from_file_location(
         "iqstream_roundtrip", output / "iqstream_roundtrip.py")
     module = importlib.util.module_from_spec(spec)

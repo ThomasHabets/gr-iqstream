@@ -65,8 +65,11 @@ def main():
          "-DENABLE_TESTING=ON", f"-DPython3_EXECUTABLE={sys.executable}",
          f"-DPYTHON_EXECUTABLE={sys.executable}"])
     run(["cmake", "--build", build, "-j", args.jobs])
-    run(["ctest", "--test-dir", build, "--output-on-failure", "-j", args.jobs])
     environment = os.environ.copy()
+    environment["LD_LIBRARY_PATH"] = os.pathsep.join((
+        str(build), environment.get("LD_LIBRARY_PATH", "")))
+    run(["ctest", "--test-dir", build, "--output-on-failure", "-j", args.jobs],
+        environment=environment)
     environment["PYTHONPATH"] = str(build / "python")
     environment["GRC_BLOCKS_PATH"] = str(ROOT / "grc")
     run([sys.executable, ROOT / "tests/qa_grc.py", "--build", build],

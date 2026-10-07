@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 #include "session.h"
 #include "test.h"
+#include <algorithm>
 #include <deque>
 #include <thread>
 
@@ -143,6 +144,36 @@ void receiver_and_gaps()
     CHECK(trailing.sent.back().has_complete());
     CHECK(trailing.state->status().trailing_gap == UINT64_MAX);
 }
+void rustradio_negotiation()
+{
+    stream_options remote;
+    remote.profile = metadata_profile::RUSTRADIO;
+    remote.loss = loss_policy::ALLOW_GAPS;
+    peer defaults(false);
+    defaults.start(false, remote);
+    CHECK(defaults.state->status().state == session_state::FAILED);
+
+    stream_options wrong_profile;
+    wrong_profile.loss = loss_policy::ALLOW_GAPS;
+    peer native(false, wrong_profile);
+    native.start(false, remote);
+    CHECK(native.state->status().state == session_state::FAILED);
+
+    peer compatible(false, remote);
+    const auto& offered = compatible.sent.front().open();
+    CHECK(offered.loss_policy() == wire::LOSS_POLICY_ALLOW_GAPS);
+    CHECK(std::find(offered.download().accepted_tag_kinds().begin(),
+                    offered.download().accepted_tag_kinds().end(),
+                    wire::TAG_KIND_STRING) !=
+          offered.download().accepted_tag_kinds().end());
+    compatible.start(false, remote);
+    compatible.write_done();
+    CHECK(compatible.state->status().state == session_state::STREAMING);
+    compatible.state->received(chunk(0, 0, 1).SerializeAsString());
+    float output;
+    std::vector<gr::tag_t> tags;
+    CHECK(compatible.state->pull(&output, 1, 0, tags) == 1);
+}
 void malformed_peers()
 {
     stream_options o;
@@ -202,6 +233,7 @@ int main()
     try {
         racing_and_completion();
         receiver_and_gaps();
+        rustradio_negotiation();
         malformed_peers();
         std::cout << "state machine checks passed\n";
     } catch (const std::exception& e) {

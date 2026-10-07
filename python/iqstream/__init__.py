@@ -2,7 +2,7 @@
 from .iqstream_python import *  # noqa: F403
 
 
-def configured_options(options, *, sample_rate_hz=None):
+def configured_options(options, *, sample_rate_hz=None, profile=None, loss=None):
     """Copy options for a GRC block without modifying a shared configuration."""
     result = stream_options()  # noqa: F405
     for name in (
@@ -15,6 +15,10 @@ def configured_options(options, *, sample_rate_hz=None):
         setattr(result, name, getattr(options, name))
     if sample_rate_hz is not None:
         result.sample_rate_hz = sample_rate_hz
+    if profile is not None:
+        result.profile = profile
+    if loss is not None:
+        result.loss = loss
     return result
 
 

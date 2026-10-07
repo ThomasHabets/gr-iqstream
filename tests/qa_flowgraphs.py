@@ -145,6 +145,21 @@ class Flowgraphs(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             iqstream.source("127.0.0.1:1", "iq", options=options)
 
+    def test_grc_option_overrides(self):
+        original = iqstream.stream_options()
+        original.max_in_flight_frames = 3
+        configured = iqstream.configured_options(
+            original, profile=iqstream.metadata_profile.RUSTRADIO,
+            loss=iqstream.loss_policy.ALLOW_GAPS)
+        self.assertEqual(configured.profile, iqstream.metadata_profile.RUSTRADIO)
+        self.assertEqual(configured.loss, iqstream.loss_policy.ALLOW_GAPS)
+        self.assertEqual(configured.max_in_flight_frames, 3)
+        self.assertEqual(original.profile, iqstream.metadata_profile.NATIVE)
+        self.assertEqual(original.loss, iqstream.loss_policy.LOSSLESS)
+        copied = iqstream.configured_options(configured)
+        self.assertEqual(copied.profile, configured.profile)
+        self.assertEqual(copied.loss, configured.loss)
+
 
 if __name__ == "__main__":
     unittest.main()

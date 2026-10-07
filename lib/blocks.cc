@@ -9,6 +9,7 @@
 #include <gnuradio/iqstream/source.h>
 #include <gnuradio/sptr_magic.h>
 #include <algorithm>
+#include <atomic>
 
 namespace gr {
 namespace iqstream {
@@ -61,6 +62,7 @@ public:
         std::lock_guard<std::mutex> guard(d_mutex);
         if (d_running)
             return true;
+        d_failure_reported = false;
         if constexpr (Serving) {
             if (d_has_run)
                 server_impl::get(d_listener)->reset_resource(d_entry);
@@ -108,6 +110,7 @@ public:
             state->cancel();
             state->wait_done(std::chrono::seconds(5));
         }
+        report_failure(state);
         return state->status().state == session_state::COMPLETE;
     }
     int work(int noutput_items,
@@ -143,6 +146,8 @@ public:
                     std::lock_guard<std::mutex> guard(d_entry->mutex);
                     d_entry->graph_position = advance(d_entry->graph_position, n);
                 }
+                if (!n)
+                    report_failure(state);
                 return n ? static_cast<int>(n) : gr::block::WORK_DONE;
             } else {
                 std::vector<gr::tag_t> tags;
@@ -150,6 +155,8 @@ public:
                     output_items[0], noutput_items, this->nitems_written(0), tags);
                 for (const auto& tag : tags)
                     this->add_item_tag(0, tag);
+                if (n == gr::block::WORK_DONE)
+                    report_failure(state);
                 return n;
             }
         } catch (const protocol_error& e) {
@@ -157,6 +164,7 @@ public:
         } catch (const std::exception& e) {
             state->local_failure(grpc::StatusCode::INTERNAL, e.what());
         }
+        report_failure(state);
         return gr::block::WORK_DONE;
     }
     session_status status() const override
@@ -188,6 +196,15 @@ public:
     }
 
 private:
+    void report_failure(const std::shared_ptr<session>& state)
+    {
+        const auto status = state->status();
+        if (status.state == session_state::FAILED && !d_failure_reported.exchange(true))
+            this->d_logger->error("IQ stream '{}' failed (gRPC {}): {}",
+                                  d_id,
+                                  status.grpc_status_code,
+                                  status.message);
+    }
     std::shared_ptr<session> connection()
     {
         if constexpr (Serving) {
@@ -212,6 +229,7 @@ private:
     std::unique_ptr<client_connection> d_connection;
     bool d_running = false;
     bool d_has_run = false;
+    std::atomic<bool> d_failure_reported{ false };
 };
 } // namespace
 source::sptr source::make(const std::string& address,

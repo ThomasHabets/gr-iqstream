@@ -23,6 +23,22 @@ parameters:
   label: Stream Options
   dtype: raw
   default: iqstream.stream_options()
+- id: profile
+  label: Metadata Profile
+  dtype: enum
+  default: options
+  options: [options, native, rustradio]
+  option_labels: [From Stream Options, Native PMT, RustRadio scalar]
+  option_attributes:
+    value: [None, iqstream.metadata_profile.NATIVE, iqstream.metadata_profile.RUSTRADIO]
+- id: loss
+  label: Loss Policy
+  dtype: enum
+  default: options
+  options: [options, lossless, allow_gaps]
+  option_labels: [From Stream Options, Lossless, Allow gaps]
+  option_attributes:
+    value: [None, iqstream.loss_policy.LOSSLESS, iqstream.loss_policy.ALLOW_GAPS]
 
 outputs:
 - domain: stream
@@ -30,10 +46,12 @@ outputs:
 
 templates:
   imports: from gnuradio import iqstream
-  make: iqstream.source(iqstream.endpoint_address(${address}), ${resource}, iqstream.sample_layout.${type.layout}, iqstream.configured_options(${options}))
+  make: iqstream.source(iqstream.endpoint_address(${address}), ${resource}, iqstream.sample_layout.${type.layout}, iqstream.configured_options(${options}, profile=${profile.value}, loss=${loss.value}))
 documentation: |-
   Native gRPC streaming for GNU Radio 3.10.12. One real or complex channel.
   Configure stream_options for TLS, metadata profile, loss policy and limits.
+  For RustRadio servers select RustRadio scalar. Match the server sink's blocking
+  setting: blocking(true) requires Lossless; blocking(false) requires Allow gaps.
   Sending blocks finish their accepted prefix on stop; cancel() aborts.
   ACCEPTED completion does not promise durable storage or downstream DSP completion.
 file_format: 1

@@ -9,9 +9,13 @@ def main():
     parser.add_argument("address")
     parser.add_argument("resource")
     parser.add_argument("--real", action="store_true")
+    parser.add_argument("--allow-gaps", action="store_true",
+                        help="Required for a RustRadio sink with blocking(false)")
     args = parser.parse_args()
     options = iqstream.stream_options()
     options.profile = iqstream.metadata_profile.RUSTRADIO
+    if args.allow_gaps:
+        options.loss = iqstream.loss_policy.ALLOW_GAPS
     layout = (iqstream.sample_layout.REAL if args.real
               else iqstream.sample_layout.COMPLEX)
     source = iqstream.source(args.address, args.resource, layout, options)
