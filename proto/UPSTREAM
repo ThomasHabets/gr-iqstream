@@ -1,0 +1,5 @@
+Source: rustradio/proto/iq_stream.proto
+Workspace source: ../rustradio/proto/iq_stream.proto
+SHA256: ffac19f4521a3960e9ad75dab1f19259f3d8fe7c4585d686e2438430f04a6376
+Protocol: rustradio.iq.v1
+Do not edit this copy. Request upstream changes, then copy the upstream file verbatim.

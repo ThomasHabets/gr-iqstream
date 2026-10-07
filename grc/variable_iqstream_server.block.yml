@@ -1,0 +1,21 @@
+id: variable_iqstream_server
+label: IQ Stream Server
+flags: [show_id, python]
+parameters:
+- id: address
+  label: Listen Address
+  dtype: string
+  default: '127.0.0.1:50051'
+- id: tls
+  label: TLS Options
+  dtype: raw
+  default: iqstream.tls_options()
+value: ${ None }
+templates:
+  imports: from gnuradio import iqstream
+  var_make: self.${id} = ${id} = iqstream.server(${address}, ${tls})
+documentation: |-
+  Shared listener for IQ Stream Server Source and Server Sink resources.
+  Use this variable's ID as their Server parameter. Each resource ID is unique.
+  Call shutdown() to close the listener and cancel outstanding sessions.
+file_format: 1

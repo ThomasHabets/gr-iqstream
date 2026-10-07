@@ -1,0 +1,29 @@
+name: presubmit
+on: [push, pull_request]
+jobs:
+  gnuradio-3-10-12:
+    runs-on: ubuntu-latest
+    container: debian:trixie
+    steps:
+      - name: Install GNU Radio 3.10.12 and build tools
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends git ca-certificates curl \
+            build-essential cmake ninja-build gnuradio gnuradio-dev \
+            libprotobuf-dev protobuf-compiler libgrpc++-dev \
+            protobuf-compiler-grpc pybind11-dev python3-dev python3-numpy \
+            python3-yaml clang-format openssl
+      - uses: actions/checkout@v4
+      - name: Install Rust for interoperability checks
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+            | sh -s -- -y --profile minimal --default-toolchain 1.99.0
+          "$HOME/.cargo/bin/rustup" component add rustfmt
+      - name: Check out matching upstream protocol implementation
+        run: |
+          git clone https://github.com/ThomasHabets/rustradio build-upstream
+          git -C build-upstream checkout 91542ad0410beac5e1ade9074560ae30f6272f5d
+      - name: Run every presubmit
+        run: |
+          export PATH="$HOME/.cargo/bin:$PATH"
+          /usr/bin/python3 tools/presubmit.py --rustradio build-upstream

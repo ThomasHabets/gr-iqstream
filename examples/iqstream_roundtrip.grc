@@ -1,0 +1,158 @@
+options:
+  parameters:
+    id: iqstream_roundtrip
+    title: IQ Streaming Roundtrip
+    generate_options: no_gui
+    output_language: python
+    run: 'False'
+    gen_cmake: 'Off'
+    catch_exceptions: 'True'
+  states:
+    coordinate:
+    - 0
+    - 0
+    state: enabled
+blocks:
+- name: samp_rate
+  id: variable
+  parameters:
+    value: '48000'
+  states:
+    coordinate:
+    - 16
+    - 16
+    rotation: 0
+    state: enabled
+- name: iq_server
+  id: variable_iqstream_server
+  parameters:
+    address: 127.0.0.1:0
+    tls: iqstream.tls_options()
+  states:
+    coordinate:
+    - 160
+    - 16
+    rotation: 0
+    state: enabled
+- name: real_samples
+  id: blocks_vector_source_x
+  parameters:
+    type: float
+    vector: '[i / 32 for i in range(1000)]'
+    repeat: 'False'
+    vlen: '1'
+    tags: '[]'
+  states:
+    coordinate:
+    - 16
+    - 160
+    rotation: 0
+    state: enabled
+- name: complex_samples
+  id: blocks_vector_source_x
+  parameters:
+    type: complex
+    vector: '[complex(i / 32, -i / 64) for i in range(1000)]'
+    repeat: 'False'
+    vlen: '1'
+    tags: '[]'
+  states:
+    coordinate:
+    - 16
+    - 320
+    rotation: 0
+    state: enabled
+- name: served_download
+  id: iqstream_server_sink
+  parameters:
+    listener: iq_server
+    resource: download
+    type: float
+    options: iqstream.stream_options()
+    sample_rate: samp_rate
+  states:
+    coordinate:
+    - 380
+    - 160
+    rotation: 0
+    state: enabled
+- name: client_download
+  id: iqstream_source
+  parameters:
+    address: iq_server
+    resource: download
+    type: float
+    options: iqstream.stream_options()
+  states:
+    coordinate:
+    - 16
+    - 240
+    rotation: 0
+    state: enabled
+- name: client_upload
+  id: iqstream_sink
+  parameters:
+    address: iq_server
+    resource: upload
+    type: complex
+    options: iqstream.stream_options()
+    sample_rate: samp_rate
+  states:
+    coordinate:
+    - 380
+    - 320
+    rotation: 0
+    state: enabled
+- name: served_upload
+  id: iqstream_server_source
+  parameters:
+    listener: iq_server
+    resource: upload
+    type: complex
+    options: iqstream.stream_options()
+    sample_rate: samp_rate
+  states:
+    coordinate:
+    - 16
+    - 400
+    rotation: 0
+    state: enabled
+- name: downloaded
+  id: blocks_null_sink
+  parameters:
+    type: float
+  states:
+    coordinate:
+    - 380
+    - 240
+    rotation: 0
+    state: enabled
+- name: uploaded
+  id: blocks_null_sink
+  parameters:
+    type: complex
+  states:
+    coordinate:
+    - 380
+    - 400
+    rotation: 0
+    state: enabled
+connections:
+- - real_samples
+  - '0'
+  - served_download
+  - '0'
+- - client_download
+  - '0'
+  - downloaded
+  - '0'
+- - complex_samples
+  - '0'
+  - client_upload
+  - '0'
+- - served_upload
+  - '0'
+  - uploaded
+  - '0'
+metadata:
+  file_format: 1

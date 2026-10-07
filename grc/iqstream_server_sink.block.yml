@@ -1,0 +1,43 @@
+id: iqstream_server_sink
+label: IQ Stream Server Sink
+category: '[IQ Streaming]'
+flags: [python]
+parameters:
+- id: listener
+  label: Server
+  dtype: raw
+  default: iq_server
+- id: resource
+  label: Resource ID
+  dtype: string
+  default: iq
+- id: type
+  label: Sample Type
+  dtype: enum
+  default: complex
+  options: [float, complex]
+  option_labels: [Real float32, Complex float32]
+  option_attributes:
+    layout: [REAL, COMPLEX]
+- id: options
+  label: Stream Options
+  dtype: raw
+  default: iqstream.stream_options()
+- id: sample_rate
+  label: Sample Rate (Hz)
+  dtype: real
+  default: samp_rate
+
+inputs:
+- domain: stream
+  dtype: ${ type }
+
+templates:
+  imports: from gnuradio import iqstream
+  make: iqstream.server_sink(${listener}, ${resource}, iqstream.sample_layout.${type.layout}, iqstream.configured_options(${options}, sample_rate_hz=${sample_rate}))
+documentation: |-
+  Native gRPC streaming for GNU Radio 3.10.12. One real or complex channel.
+  Configure stream_options for TLS, metadata profile, loss policy and limits.
+  Sending blocks finish their accepted prefix on stop; cancel() aborts.
+  ACCEPTED completion does not promise durable storage or downstream DSP completion.
+file_format: 1
