@@ -147,9 +147,13 @@ void completion_timeout()
     stream_options options;
     options.max_in_flight_frames = 1;
     options.shutdown_timeout_ms = 100;
+    auto receiver_options = options;
+    // Only the sender should expire in this test. With equal deadlines, the
+    // receiver watchdog can abort first and the sender legitimately sees CANCELLED.
+    receiver_options.shutdown_timeout_ms = 5000;
     auto listener = server::make("127.0.0.1:0");
     auto entry = server_impl::get(listener)->add_resource(
-        "iq", false, sample_layout::REAL, options);
+        "iq", false, sample_layout::REAL, receiver_options);
     auto sender =
         std::make_shared<session>(true, true, sample_layout::REAL, options, "iq");
     client_connection transport(listener->address(), sender, options);
@@ -160,6 +164,7 @@ void completion_timeout()
     // Receiver never accepts the frame into graph buffers, so it cannot Complete.
     CHECK(sender->wait_done(std::chrono::seconds(3)));
     CHECK(sender->status().state == session_state::FAILED);
+    CHECK(sender->status().grpc_status_code == grpc::StatusCode::DEADLINE_EXCEEDED);
     CHECK(sender->status().completion_uncertain);
     listener->shutdown();
 }
