@@ -78,9 +78,10 @@ void validate_options(const stream_options& o, bool sending)
     require(o.handshake_timeout_ms && o.shutdown_timeout_ms, "timeouts must be positive");
     require(o.loss == loss_policy::LOSSLESS || o.loss == loss_policy::ALLOW_GAPS,
             "invalid loss policy");
-    require(o.profile == metadata_profile::NATIVE ||
-                o.profile == metadata_profile::RUSTRADIO,
-            "invalid metadata profile");
+    if (sending)
+        require(o.profile == metadata_profile::NATIVE ||
+                    o.profile == metadata_profile::RUSTRADIO,
+                "invalid outgoing metadata profile");
     if (sending) {
         require(std::isfinite(o.sample_rate_hz) && o.sample_rate_hz > 0,
                 "invalid sample rate");
@@ -114,8 +115,14 @@ std::vector<wire::TagKind> capabilities(const stream_options& o)
         wire::TAG_KIND_TUPLE,   wire::TAG_KIND_PAIR,    wire::TAG_KIND_DICTIONARY,
         wire::TAG_KIND_NIL
     };
-    if (o.string_to_symbol)
-        kinds.push_back(wire::TAG_KIND_STRING);
+    return kinds;
+}
+std::vector<wire::TagKind> download_capabilities()
+{
+    std::vector<wire::TagKind> kinds;
+    for (int kind = 1; kind <= wire::TagKind_MAX; ++kind)
+        if (wire::TagKind_IsValid(kind))
+            kinds.push_back(static_cast<wire::TagKind>(kind));
     return kinds;
 }
 namespace {
@@ -280,9 +287,13 @@ void validate_value(const wire::TagValue& v,
         break;
     }
     case wire::TagValue::kJsonValue:
+        require(valid_utf8(v.json_value()), "invalid JSON UTF-8");
+        break;
     case wire::TagValue::kOpaqueValue:
-        throw protocol_error(grpc::StatusCode::UNIMPLEMENTED,
-                             "JSON/OPAQUE metadata unsupported");
+        require(!v.opaque_value().type_url().empty() &&
+                    valid_utf8(v.opaque_value().type_url()),
+                "invalid opaque codec identifier");
+        break;
     default:
         break;
     }
@@ -304,9 +315,6 @@ pmt::pmt_t decode_value(const wire::TagValue& v, const stream_options& o)
     case wire::TagValue::kUint64Value:
         return pmt::from_uint64(v.uint64_value());
     case wire::TagValue::kStringValue:
-        require(o.string_to_symbol || o.profile == metadata_profile::RUSTRADIO,
-                "STRING-to-symbol conversion requires opt-in",
-                grpc::StatusCode::UNIMPLEMENTED);
         return pmt::intern(v.string_value());
     case wire::TagValue::kSymbolValue:
         return pmt::intern(v.symbol_value());
@@ -368,7 +376,7 @@ wire::TagValue to_wire_value(const pmt::pmt_t& v, const stream_options& o)
 }
 pmt::pmt_t from_wire_value(const wire::TagValue& v, const stream_options& o)
 {
-    const auto c = capabilities(o);
+    const auto c = download_capabilities();
     std::set<int> kinds(c.begin(), c.end());
     value_budget b;
     validate_value(v, kinds, b, 1);
@@ -413,11 +421,8 @@ void validate_description(const wire::StreamDescription& d,
             grpc::StatusCode::UNIMPLEMENTED);
     require(std::isfinite(d.sample_rate_hz()) && d.sample_rate_hz() > 0,
             "invalid sample rate");
-    require(!d.uses_terminal_tags() && d.opaque_codecs().empty(),
-            "terminal tags/opaque codecs unsupported",
-            grpc::StatusCode::UNIMPLEMENTED);
-    require(!d.uses_tag_source_ids() || o.profile != metadata_profile::RUSTRADIO,
-            "provenance unsupported by RustRadio profile",
+    require(!d.uses_terminal_tags(),
+            "terminal tags unsupported",
             grpc::StatusCode::UNIMPLEMENTED);
     require(valid_utf8(d.source_id()), "invalid source ID UTF-8");
     if (d.has_sample_zero_time()) {
@@ -426,15 +431,18 @@ void validate_description(const wire::StreamDescription& d,
                     t.nanos() >= 0 && t.nanos() < 1000000000,
                 "invalid sample-zero timestamp");
     }
-    const auto c = capabilities(o);
-    std::set<int> supported(c.begin(), c.end()), declared;
+    (void)o;
+    std::set<int> declared;
     for (auto k : d.tag_kinds()) {
         require(wire::TagKind_IsValid(k) && k != 0 && declared.insert(k).second,
                 "invalid/duplicate tag kind");
-        require(supported.count(k),
-                "unsupported declared tag kind",
-                grpc::StatusCode::UNIMPLEMENTED);
     }
+    std::set<std::string> codecs;
+    for (const auto& codec : d.opaque_codecs())
+        require(declared.count(wire::TAG_KIND_OPAQUE) && !codec.empty() &&
+                    valid_utf8(codec) && codec.find('*') == std::string::npos &&
+                    codecs.insert(codec).second,
+                "invalid/duplicate opaque codec declaration");
     value_budget b;
     std::set<std::string> keys;
     for (const auto& p : d.properties()) {
@@ -442,7 +450,6 @@ void validate_description(const wire::StreamDescription& d,
                     p.has_value(),
                 "invalid property");
         validate_value(p.value(), declared, b, 1);
-        (void)decode_value(p.value(), o);
     }
 }
 namespace {
@@ -553,8 +560,8 @@ from_wire_tag(const wire::Tag& t, uint64_t local_offset, const stream_options& o
 {
     gr::tag_t out;
     out.offset = local_offset;
-    out.key = pmt::intern(t.key());
     out.value = from_wire_value(t.value(), o);
+    out.key = pmt::intern(t.key());
     out.srcid = t.has_source_id() ? pmt::intern(t.source_id()) : pmt::PMT_F;
     return out;
 }

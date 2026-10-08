@@ -35,15 +35,15 @@ struct IQSTREAM_API tls_options {
     std::string private_key;
 };
 
-/*! Fixed session options. RUSTRADIO explicitly enables string/symbol conversion
- * and float32 metadata narrowing. Native symbols and doubles retain their kinds.
+/*! Fixed session options. The profile controls outgoing metadata only.
+ * RUSTRADIO exports symbols as STRING and narrows doubles to FLOAT32.
+ * Receivers accept all tag kinds and discard tags without a PMT mapping.
  * Properties retain their order here; wire property keys must be unique.
  */
 struct IQSTREAM_API stream_options {
     double sample_rate_hz = 1.0;
     loss_policy loss = loss_policy::LOSSLESS;
     metadata_profile profile = metadata_profile::NATIVE;
-    bool string_to_symbol = false;
     bool blocking = true;
     uint32_t max_frame_bytes = 256 * 1024;
     uint32_t max_in_flight_frames = 8;

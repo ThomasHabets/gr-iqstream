@@ -8,8 +8,8 @@ Each session carries one real `float` or complex `gr_complex` stream in
 FLOAT32/little-endian encoding. Samples are bit-preserving: there is no scaling,
 resampling, or implicit layout conversion. Both upload and download are supported.
 WebSocket, SigMF adapters, integer/FLOAT64 sample ports, DURABLE completion,
-terminal tags, JSON and OPAQUE metadata are outside this release's graph profile.
-Unsupported declarations are rejected before samples flow.
+terminal tags are outside this release's graph profile. Receivers advertise all
+defined tag kinds, convert supported values to PMT and discard unsupported tags.
 
 | Block | GNU Radio port | Network role |
 | --- | --- | --- |
@@ -145,7 +145,7 @@ sender conservatively declares provenance support.
 | BOOL, INT64, UINT64 | Typed booleans and exact signed/unsigned integers |
 | FLOAT32, FLOAT64 | PMT double; export as FLOAT64 |
 | SYMBOL | PMT symbol; export as SYMBOL |
-| STRING | Rejected unless `string_to_symbol=True`; re-export as SYMBOL |
+| STRING | PMT symbol; re-export as SYMBOL |
 | BYTES | PMT blob/u8vector; export as BYTES |
 | COMPLEX | PMT complex double |
 | LIST | Proper PMT list; export proper lists as LIST |
@@ -158,29 +158,32 @@ Empty wire lists/dictionaries become PMT NIL and re-export as NIL. Native mappin
 preserves values according to these documented conversions, not every original
 wire kind. Dictionary BYTES keys are rejected because PMT dictionary lookup uses
 identity rather than byte-content equality. STRING/SYMBOL keys that collide after
-conversion are rejected. Other uniform vectors, custom PMTs, JSON and OPAQUE are
-rejected; there is no version-dependent PMT serialization fallback. Validation
-and conversion of all frame tags finish before any associated samples are
-published. Immutable properties follow the same conversion rules.
+conversion cannot be represented. Unsupported received values, including JSON,
+OPAQUE, unsupported dictionary keys,
+and structures containing such values, cause the entire tag to be dropped. Sample
+bytes, retained tag offsets and frame credits are unaffected. Malformed frames,
+undeclared values and decoder resource-limit violations still fail the stream.
+Immutable properties remain available in their original protobuf representation
+through `status().description_bytes`, including unsupported values.
 
-For RustRadio interoperability, explicitly choose:
+Download clients always advertise all 16 defined tag kinds. No metadata profile
+selection or STRING conversion opt-in is required. In Companion, match Loss
+Policy to the remote RustRadio sink: `blocking(true)` requires **Lossless**, while
+`blocking(false)` requires **Allow gaps**. A TCP connection can exist even when
+negotiation fails; failures are logged and retained in `status().message`.
 
-```python
-options.profile = iqstream.metadata_profile.RUSTRADIO
-```
+The existing `stream_options.profile` applies only to outgoing PMT encoding.
+`metadata_profile.RUSTRADIO` limits outgoing metadata to RustRadio's five scalar
+kinds, exports symbols as STRING and narrows real metadata to FLOAT32. It rejects
+structured values and provenance instead of stripping them. Incoming metadata
+conversion is independent of this option. Other uniform vectors and custom PMTs
+remain unsupported for export.
 
-In Companion's IQ Stream Source, select **RustRadio scalar** for Metadata
-Profile. Match Loss Policy to the remote RustRadio sink: `blocking(true)` requires
-**Lossless**, while `blocking(false)` requires **Allow gaps**. A TCP connection
-can exist even when stream negotiation fails; failures are logged to the console
-and retained in `status().message`.
-
-This selects its five scalar kinds, enables STRING-to-symbol conversion, exports
-PMT symbols as STRING, and explicitly narrows real metadata to FLOAT32 (including
-possible rounding/overflow). It rejects structured values and provenance instead
-of stripping them. RustRadio currently supports downloads, not uploads; this
-module's upload blocks interoperate with its own server and conforming peers.
-`examples/rustradio_download.py` demonstrates receiving a RustRadio resource.
+OPAQUE has separate codec negotiation: the current schema requires exact accepted
+codec identifiers and forbids wildcards. Advertising the OPAQUE kind alone cannot
+accept arbitrary codecs; that feature requires an upstream protocol/API change.
+The schema is not modified here. Terminal tags remain unadvertised because GNU
+Radio streaming ports have no item at EOF to attach them to.
 
 ## Gaps
 

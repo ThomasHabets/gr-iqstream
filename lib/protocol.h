@@ -43,6 +43,7 @@ void validate_limits(const wire::Limits& limits);
 wire::Encoding encoding(sample_layout layout);
 wire::StreamDescription description(sample_layout layout, const stream_options& options);
 std::vector<wire::TagKind> capabilities(const stream_options& options);
+std::vector<wire::TagKind> download_capabilities();
 void validate_description(const wire::StreamDescription& desc,
                           sample_layout layout,
                           const stream_options& options);

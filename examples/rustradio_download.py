@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-"""Receive a RustRadio resource using its explicitly selected scalar profile."""
+"""Receive a RustRadio resource with automatic PMT metadata conversion."""
 import argparse
 from gnuradio import blocks, gr, iqstream
 
@@ -13,7 +13,6 @@ def main():
                         help="Required for a RustRadio sink with blocking(false)")
     args = parser.parse_args()
     options = iqstream.stream_options()
-    options.profile = iqstream.metadata_profile.RUSTRADIO
     if args.allow_gaps:
         options.loss = iqstream.loss_policy.ALLOW_GAPS
     layout = (iqstream.sample_layout.REAL if args.real

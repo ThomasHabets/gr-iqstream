@@ -149,9 +149,8 @@ class Flowgraphs(unittest.TestCase):
         original = iqstream.stream_options()
         original.max_in_flight_frames = 3
         configured = iqstream.configured_options(
-            original, profile=iqstream.metadata_profile.RUSTRADIO,
-            loss=iqstream.loss_policy.ALLOW_GAPS)
-        self.assertEqual(configured.profile, iqstream.metadata_profile.RUSTRADIO)
+            original, loss=iqstream.loss_policy.ALLOW_GAPS)
+        self.assertEqual(configured.profile, iqstream.metadata_profile.NATIVE)
         self.assertEqual(configured.loss, iqstream.loss_policy.ALLOW_GAPS)
         self.assertEqual(configured.max_in_flight_frames, 3)
         self.assertEqual(original.profile, iqstream.metadata_profile.NATIVE)

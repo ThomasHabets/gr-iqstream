@@ -157,7 +157,7 @@ void rustradio_negotiation()
     wrong_profile.loss = loss_policy::ALLOW_GAPS;
     peer native(false, wrong_profile);
     native.start(false, remote);
-    CHECK(native.state->status().state == session_state::FAILED);
+    CHECK(native.state->status().state == session_state::STREAMING);
 
     peer compatible(false, remote);
     const auto& offered = compatible.sent.front().open();
@@ -173,6 +173,63 @@ void rustradio_negotiation()
     float output;
     std::vector<gr::tag_t> tags;
     CHECK(compatible.state->pull(&output, 1, 0, tags) == 1);
+}
+void drop_unsupported_metadata()
+{
+    peer p(false);
+    const auto& offered = p.sent.front().open().download();
+    CHECK(offered.accepted_tag_kinds_size() == wire::TagKind_MAX);
+    CHECK(offered.accept_tag_source_ids());
+    wire::ServerMessage started;
+    auto* s = started.mutable_started();
+    *s->mutable_description() = description(sample_layout::REAL, {});
+    s->mutable_description()->clear_tag_kinds();
+    for (auto kind : download_capabilities())
+        s->mutable_description()->add_tag_kinds(kind);
+    auto* property = s->mutable_description()->add_properties();
+    property->set_key("unsupported");
+    property->mutable_value()->set_json_value("{}");
+    s->mutable_limits()->set_max_frame_bytes(4096);
+    s->mutable_limits()->set_max_in_flight_frames(8);
+    s->set_loss_policy(wire::LOSS_POLICY_LOSSLESS);
+    s->set_completion_mode(wire::COMPLETION_MODE_ACCEPTED);
+    p.state->received(started.SerializeAsString());
+    p.write_done();
+    auto frame = chunk(0, 0, 3);
+    auto* tags = frame.mutable_frame()->mutable_chunk()->mutable_tags();
+    auto* t = tags->Add();
+    t->set_key("json");
+    t->mutable_value()->set_json_value("{}");
+    t = tags->Add();
+    t->set_key("nested");
+    t->mutable_value()->mutable_list_value()->add_values()->set_json_value("null");
+    t = tags->Add();
+    t->set_key("opaque");
+    t->mutable_value()->mutable_opaque_value()->set_type_url("example/v1");
+    t = tags->Add();
+    t->set_key("string");
+    t->mutable_value()->set_string_value("received");
+    t = tags->Add();
+    t->set_sample_index(2);
+    t->set_key("bool");
+    t->mutable_value()->set_bool_value(false);
+    p.state->received(frame.SerializeAsString());
+    float output[3];
+    std::vector<gr::tag_t> received;
+    CHECK(p.state->pull(output, 3, 10, received) == 3);
+    CHECK(received.size() == 2);
+    CHECK(received[0].offset == 10);
+    CHECK(pmt::symbol_to_string(received[0].value) == "received");
+    CHECK(received[1].offset == 12 && received[1].value == pmt::PMT_F);
+    CHECK(p.state->status().state == session_state::STREAMING);
+    // Unsupported metadata does not bypass structural or resource validation.
+    auto bad = chunk(1, 3, 1);
+    t = bad.mutable_frame()->mutable_chunk()->add_tags();
+    t->set_sample_index(4);
+    t->set_key("bad");
+    t->mutable_value()->set_json_value("{}");
+    p.state->received(bad.SerializeAsString());
+    CHECK(p.state->status().state == session_state::FAILED);
 }
 void malformed_peers()
 {
@@ -234,6 +291,7 @@ int main()
         racing_and_completion();
         receiver_and_gaps();
         rustradio_negotiation();
+        drop_unsupported_metadata();
         malformed_peers();
         std::cout << "state machine checks passed\n";
     } catch (const std::exception& e) {

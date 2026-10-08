@@ -51,8 +51,6 @@ void test_protocol()
     v.set_bool_value(false);
     CHECK(from_wire_value(v, options) == pmt::PMT_F);
     v.set_string_value("");
-    rejects([&] { from_wire_value(v, options); });
-    options.string_to_symbol = true;
     CHECK(pmt::symbol_to_string(from_wire_value(v, options)).empty());
     v.mutable_list_value();
     CHECK(from_wire_value(v, options) == pmt::PMT_NIL);

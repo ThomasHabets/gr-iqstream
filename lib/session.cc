@@ -133,10 +133,9 @@ void session::begin_client()
         auto* download = o->mutable_download();
         download->set_source(d_resource);
         *download->add_accepted_encodings() = encoding(d_layout);
-        for (auto kind : capabilities(d_options))
+        for (auto kind : download_capabilities())
             download->add_accepted_tag_kinds(kind);
-        download->set_accept_tag_source_ids(d_options.profile !=
-                                            metadata_profile::RUSTRADIO);
+        download->set_accept_tag_source_ids(true);
     }
     d_controls.emplace_back(client_control(m), action::OPEN);
     drive_locked();
@@ -285,8 +284,16 @@ void session::frame_locked(wire::Frame f, size_t bytes)
         item.gap_before = d_receive_gap;
         d_receive_gap = 0;
         d_status.trailing_gap = 0;
-        for (const auto& t : f.chunk().tags())
-            item.tags.push_back(from_wire_tag(t, t.sample_index(), d_options));
+        for (const auto& t : f.chunk().tags()) {
+            try {
+                item.tags.push_back(from_wire_tag(t, t.sample_index(), d_options));
+            } catch (const protocol_error& e) {
+                // The frame was validated above. Unsupported PMT mappings drop
+                // the entire tag, including structured values with such members.
+                if (e.code() != grpc::StatusCode::UNIMPLEMENTED)
+                    throw;
+            }
+        }
         swap_components(*f.mutable_chunk()->mutable_samples());
         d_cursor = advance(d_cursor, f.chunk().sample_count());
         d_sequence = advance(d_sequence, 1);
