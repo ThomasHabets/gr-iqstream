@@ -1,0 +1,48 @@
+id: iqstream_align_streams
+label: IQ Stream Align Streams
+category: '[IQ Streaming]'
+flags: [python]
+parameters:
+- id: type0
+  label: Stream 0 Type
+  dtype: enum
+  default: complex
+  options: [complex, float, int, short, byte]
+  option_labels: [Complex, Float, Integer, Short, Byte]
+  option_attributes:
+    size: [gr.sizeof_gr_complex, gr.sizeof_float, gr.sizeof_int, gr.sizeof_short, gr.sizeof_char]
+- id: type1
+  label: Stream 1 Type
+  dtype: enum
+  default: complex
+  options: [complex, float, int, short, byte]
+  option_labels: [Complex, Float, Integer, Short, Byte]
+  option_attributes:
+    size: [gr.sizeof_gr_complex, gr.sizeof_float, gr.sizeof_int, gr.sizeof_short, gr.sizeof_char]
+inputs:
+- label: in0
+  domain: stream
+  dtype: ${type0}
+- label: in1
+  domain: stream
+  dtype: ${type1}
+outputs:
+- label: out0
+  domain: stream
+  dtype: ${type0}
+- label: out1
+  domain: stream
+  dtype: ${type1}
+templates:
+  imports: from gnuradio import iqstream
+  make: iqstream.align_streams(${type0.size}, ${type1.size})
+documentation: |-
+  Align two independently typed inputs on UINT64 rustradio.iq.absolute_sample_index
+  tags. Both outputs advance together and contain the same absolute sample indices.
+  Drop input before its first anchor, then discard samples with lower indices
+  until the two inputs agree. Retain other tags on their corresponding output.
+  Later index anchors and rustradio.iq.gap_samples tags trigger realignment.
+  Tags discarded with samples are not replayed. Items are copied unchanged.
+  The streams must count items on the same timeline and have the same sample rate.
+  No resampling or interpolation is performed. End when either input ends.
+file_format: 1

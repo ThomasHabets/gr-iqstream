@@ -26,7 +26,7 @@ add_custom_command(OUTPUT ${PROTO_HEADER} ${CMAKE_CURRENT_BINARY_DIR}/iq_stream.
         ${CMAKE_CURRENT_SOURCE_DIR}/proto/iq_stream.proto
     DEPENDS proto/iq_stream.proto VERBATIM)
 add_library(gnuradio-iqstream SHARED lib/protocol.cc lib/session.cc lib/transport.cc
-    lib/blocks.cc ${CMAKE_CURRENT_BINARY_DIR}/iq_stream.pb.cc)
+    lib/blocks.cc lib/align_streams_impl.cc ${CMAKE_CURRENT_BINARY_DIR}/iq_stream.pb.cc)
 add_library(gnuradio::iqstream ALIAS gnuradio-iqstream)
 target_compile_definitions(gnuradio-iqstream PRIVATE gnuradio_iqstream_EXPORTS)
 target_include_directories(gnuradio-iqstream PUBLIC
@@ -84,12 +84,19 @@ if(ENABLE_TESTING)
     target_include_directories(qa_transport PRIVATE lib)
     target_link_libraries(qa_transport PRIVATE gnuradio-iqstream gRPC::grpc++)
     add_test(NAME transport COMMAND qa_transport)
+    add_executable(qa_alignment tests/qa_alignment.cc)
+    target_include_directories(qa_alignment PRIVATE lib)
+    target_link_libraries(qa_alignment PRIVATE gnuradio-iqstream gnuradio::gnuradio-blocks)
+    add_test(NAME alignment_cpp COMMAND qa_alignment)
     if(ENABLE_PYTHON)
         add_test(NAME flowgraphs COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/qa_flowgraphs.py)
+        add_test(NAME alignment COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/qa_alignment.py)
         set_tests_properties(flowgraphs PROPERTIES ENVIRONMENT "PYTHONPATH=${CMAKE_CURRENT_BINARY_DIR}/python;LD_LIBRARY_PATH=${CMAKE_CURRENT_BINARY_DIR}:$ENV{LD_LIBRARY_PATH}")
+        set_tests_properties(alignment PROPERTIES TIMEOUT 30
+            ENVIRONMENT "PYTHONPATH=${CMAKE_CURRENT_BINARY_DIR}/python;LD_LIBRARY_PATH=${CMAKE_CURRENT_BINARY_DIR}:$ENV{LD_LIBRARY_PATH}")
     endif()
-    set_tests_properties(protocol state transport PROPERTIES TIMEOUT 30)
-    set_tests_properties(protocol state transport PROPERTIES
+    set_tests_properties(protocol state transport alignment_cpp PROPERTIES TIMEOUT 30)
+    set_tests_properties(protocol state transport alignment_cpp PROPERTIES
         ENVIRONMENT "LD_LIBRARY_PATH=${CMAKE_CURRENT_BINARY_DIR}:$ENV{LD_LIBRARY_PATH}")
     if(ENABLE_PYTHON)
         set_tests_properties(flowgraphs PROPERTIES TIMEOUT 90)

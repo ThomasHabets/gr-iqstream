@@ -42,9 +42,11 @@ add_executable(consumer main.cc)
 target_link_libraries(consumer PRIVATE gnuradio::iqstream)
 ''')
     (consumer / "main.cc").write_text('''#include <gnuradio/iqstream/source.h>
+#include <gnuradio/iqstream/align_streams.h>
 #include <gnuradio/iqstream/iq_stream.pb.h>
 int main() {
     auto block = gr::iqstream::source::make("127.0.0.1:1", "iq");
+    auto aligned = gr::iqstream::align_streams::make(4, 8);
     rustradio::iq::v1::StreamDescription description;
     return block->status().state == gr::iqstream::session_state::IDLE ? 0 : 1;
 }
@@ -54,8 +56,10 @@ int main() {
     run(["cmake", "--build", consumer / "build"])
     run([consumer / "build/consumer"], env=environment)
     assert (prefix / "share/gnuradio/grc/blocks/iqstream_source.block.yml").is_file()
+    assert (prefix / "share/gnuradio/grc/blocks/iqstream_align_streams.block.yml").is_file()
     assert (prefix / "share/gr-iqstream/proto/iq_stream.proto").read_bytes() == (
         root / "proto/iq_stream.proto").read_bytes()
+    run([sys.executable, root / "tests/qa_alignment.py"], env=environment)
     run([sys.executable, root / "examples/roundtrip.py"], env=environment)
     print("Staged C++/Python installation passed")
 

@@ -185,6 +185,46 @@ accept arbitrary codecs; that feature requires an upstream protocol/API change.
 The schema is not modified here. Terminal tags remain unadvertised because GNU
 Radio streaming ports have no item at EOF to attach them to.
 
+## Synchronizing two streams
+
+Use **IQ Stream Align Streams** in Companion, or
+`iqstream.align_streams(itemsize0, itemsize1)` in Python/C++, between the two
+sources and their downstream blocks. Each output retains its input's type;
+Companion offers independent byte, short, integer, float and complex selections.
+
+```python
+from gnuradio import gr, iqstream
+
+aligned = iqstream.align_streams(gr.sizeof_float, gr.sizeof_gr_complex)
+graph.connect(real_source, (aligned, 0))
+graph.connect(complex_source, (aligned, 1))
+graph.connect((aligned, 0), real_destination)
+graph.connect((aligned, 1), complex_destination)
+```
+
+The UINT64 `rustradio.iq.absolute_sample_index` tag anchors the absolute index of
+its associated sample. Indices advance by one per item. Samples before each
+input's first anchor are discarded. For example, if inputs begin at indices 100
+and 107, discard the first seven samples from the input at 100, then emit matching
+pairs beginning at 107. The block does not add latency to the input at 107 or
+invent missing samples.
+
+Later absolute-index anchors and `rustradio.iq.gap_samples` tags trigger
+realignment. An explicit index at a gap already includes that gap's missing
+samples. Both inputs must use the same item timeline and sample rate; there is
+no resampling. Timing values must be PMT UINT64; backwards/conflicting anchors
+and index overflow fail explicitly. The final valid UINT64_MAX sample is allowed.
+
+Retained tags keep their values, source IDs and duplicate order on their own
+output, with offsets rebased to the output items. Tags on discarded samples are
+discarded too, including persistent-state updates. New absolute-index tags are
+inserted when needed so both outputs retain an accurate timeline after dropping
+samples. The block uses scheduler buffers and ends when either input ends; it
+does not emit an unmatched tail. Without an initial anchor it discards that
+input while waiting for one and cannot produce aligned output.
+`examples/align_streams.grc` demonstrates real and complex inputs starting at
+indices 100 and 102, producing eight aligned pairs from ten input items each.
+
 ## Gaps
 
 LOSSLESS is the default: acquisition waits for bounded queue capacity. To drop

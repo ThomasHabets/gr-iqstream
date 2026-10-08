@@ -1,4 +1,5 @@
 /* SPDX-License-Identifier: MIT */
+#include <gnuradio/iqstream/align_streams.h>
 #include <gnuradio/iqstream/server_sink.h>
 #include <gnuradio/iqstream/server_source.h>
 #include <gnuradio/iqstream/sink.h>
@@ -92,6 +93,10 @@ PYBIND11_MODULE(iqstream_python, m)
     bind_block<sink>(m, "sink", false);
     bind_block<server_source>(m, "server_source", true);
     bind_block<server_sink>(m, "server_sink", true);
+    py::class_<align_streams, gr::block, gr::basic_block, align_streams::sptr>(
+        m, "align_streams")
+        .def(py::init(&align_streams::make), py::arg("itemsize0"), py::arg("itemsize1"));
+    m.attr("ABSOLUTE_SAMPLE_INDEX") = "rustradio.iq.absolute_sample_index";
     m.attr("GAP_SAMPLES") = "rustradio.iq.gap_samples";
     m.attr("SAMPLE_INDEX") = "rustradio.iq.sample_index";
 }

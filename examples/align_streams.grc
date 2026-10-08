@@ -1,0 +1,103 @@
+options:
+  parameters:
+    id: alignment_grc
+    title: Align Real and Complex Streams
+    generate_options: no_gui
+    output_language: python
+    run: 'False'
+  states:
+    state: enabled
+    coordinate:
+    - 0
+    - 0
+blocks:
+- name: pmt_import
+  id: import
+  parameters:
+    imports: import pmt
+  states:
+    state: enabled
+    coordinate:
+    - 32
+    - 32
+    rotation: 0
+- name: first
+  id: blocks_vector_source_x
+  parameters:
+    type: float
+    vector: list(range(10))
+    repeat: 'False'
+    vlen: '1'
+    tags: '[gr.tag_utils.python_to_tag([0, pmt.intern(''rustradio.iq.absolute_sample_index''),
+      pmt.from_uint64(100), pmt.PMT_F])]'
+  states:
+    state: enabled
+    coordinate:
+    - 272
+    - 32
+    rotation: 0
+- name: second
+  id: blocks_vector_source_x
+  parameters:
+    type: complex
+    vector: '[complex(i, -i) for i in range(10)]'
+    repeat: 'False'
+    vlen: '1'
+    tags: '[gr.tag_utils.python_to_tag([0, pmt.intern(''rustradio.iq.absolute_sample_index''),
+      pmt.from_uint64(102), pmt.PMT_F])]'
+  states:
+    state: enabled
+    coordinate:
+    - 512
+    - 32
+    rotation: 0
+- name: aligned
+  id: iqstream_align_streams
+  parameters:
+    type0: float
+    type1: complex
+  states:
+    state: enabled
+    coordinate:
+    - 32
+    - 192
+    rotation: 0
+- name: out0
+  id: blocks_null_sink
+  parameters:
+    type: float
+  states:
+    state: enabled
+    coordinate:
+    - 272
+    - 192
+    rotation: 0
+- name: out1
+  id: blocks_null_sink
+  parameters:
+    type: complex
+  states:
+    state: enabled
+    coordinate:
+    - 512
+    - 192
+    rotation: 0
+connections:
+- - first
+  - '0'
+  - aligned
+  - '0'
+- - second
+  - '0'
+  - aligned
+  - '1'
+- - aligned
+  - '0'
+  - out0
+  - '0'
+- - aligned
+  - '1'
+  - out1
+  - '0'
+metadata:
+  file_format: 1
