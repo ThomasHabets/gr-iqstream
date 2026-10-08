@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 //! Independent interop fixture. It depends on upstream APIs without patching them.
 use rustradio::blocks::{IqStreamSink, IqStreamSource, VectorSink, VectorSource};
 use rustradio::graph::{Graph, GraphRunner};

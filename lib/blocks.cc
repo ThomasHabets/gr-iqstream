@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: GPL-3.0-or-later */
+/* SPDX-License-Identifier: MIT */
 #include "client_connection.h"
 #include "server_impl.h"
 #include <gnuradio/gr_complex.h>

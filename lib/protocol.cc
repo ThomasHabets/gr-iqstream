@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: GPL-3.0-or-later */
+/* SPDX-License-Identifier: MIT */
 #include "protocol.h"
 #include <google/protobuf/descriptor.h>
 #include <google/protobuf/io/coded_stream.h>

@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: GPL-3.0-or-later */
+/* SPDX-License-Identifier: MIT */
 #include <gnuradio/iqstream/server_sink.h>
 #include <gnuradio/iqstream/server_source.h>
 #include <gnuradio/iqstream/sink.h>

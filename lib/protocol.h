@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: GPL-3.0-or-later */
+/* SPDX-License-Identifier: MIT */
 #ifndef INCLUDED_GR_IQSTREAM_PROTOCOL_H
 #define INCLUDED_GR_IQSTREAM_PROTOCOL_H
 #include "iq_stream.pb.h"

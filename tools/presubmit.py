@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 """Run every required presubmit; missing tools/checkouts are failures."""
 import argparse
 import hashlib

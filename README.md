@@ -230,5 +230,5 @@ The checked-in schema is copied unchanged from `../rustradio/proto/iq_stream.pro
 belong upstream: request the change, then copy the approved upstream schema
 verbatim. The module does not vendor modified dependencies.
 
-Code is GPL-3.0-or-later; the copied schema retains RustRadio's MIT license,
+Code is MIT licensed; the copied schema retains RustRadio's MIT license,
 included as `proto/LICENSE.rustradio`.
