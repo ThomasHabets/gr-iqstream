@@ -95,7 +95,11 @@ PYBIND11_MODULE(iqstream_python, m)
     bind_block<server_sink>(m, "server_sink", true);
     py::class_<align_streams, gr::block, gr::basic_block, align_streams::sptr>(
         m, "align_streams")
-        .def(py::init(&align_streams::make), py::arg("itemsize0"), py::arg("itemsize1"));
+        .def(py::init(&align_streams::make),
+             py::arg("itemsize0"),
+             py::arg("itemsize1"),
+             py::arg("tag_key0") = "rustradio.iq.absolute_sample_index",
+             py::arg("tag_key1") = "rustradio.iq.absolute_sample_index");
     m.attr("ABSOLUTE_SAMPLE_INDEX") = "rustradio.iq.absolute_sample_index";
     m.attr("GAP_SAMPLES") = "rustradio.iq.gap_samples";
     m.attr("SAMPLE_INDEX") = "rustradio.iq.sample_index";

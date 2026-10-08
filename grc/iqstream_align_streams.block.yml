@@ -19,6 +19,14 @@ parameters:
   option_labels: [Complex, Float, Integer, Short, Byte]
   option_attributes:
     size: [gr.sizeof_gr_complex, gr.sizeof_float, gr.sizeof_int, gr.sizeof_short, gr.sizeof_char]
+- id: tag_key0
+  label: Stream 0 Sync Tag
+  dtype: string
+  default: rustradio.iq.absolute_sample_index
+- id: tag_key1
+  label: Stream 1 Sync Tag
+  dtype: string
+  default: rustradio.iq.absolute_sample_index
 inputs:
 - label: in0
   domain: stream
@@ -35,10 +43,13 @@ outputs:
   dtype: ${type1}
 templates:
   imports: from gnuradio import iqstream
-  make: iqstream.align_streams(${type0.size}, ${type1.size})
+  make: iqstream.align_streams(${type0.size}, ${type1.size}, ${tag_key0}, ${tag_key1})
 documentation: |-
-  Align two independently typed inputs on UINT64 rustradio.iq.absolute_sample_index
-  tags. Both outputs advance together and contain the same absolute sample indices.
+  Align two independently typed inputs on independently named UINT64 index tags.
+  Both sync tag names default to rustradio.iq.absolute_sample_index.
+  Both outputs advance together and contain the same absolute sample indices.
+  Each output retains its input's configured sync tag name. Names must be nonempty
+  and cannot be rustradio.iq.gap_samples, which is reserved for gap counts.
   Drop input before its first anchor, then discard samples with lower indices
   until the two inputs agree. Retain other tags on their corresponding output.
   Later index anchors and rustradio.iq.gap_samples tags trigger realignment.

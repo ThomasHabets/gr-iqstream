@@ -16,6 +16,13 @@ int checked_itemsize(size_t size)
         throw std::invalid_argument("align_streams item sizes must be positive ints");
     return static_cast<int>(size);
 }
+pmt::pmt_t checked_tag_key(const std::string& key)
+{
+    if (key.empty() || key == "rustradio.iq.gap_samples")
+        throw std::invalid_argument("align_streams index tag keys must be nonempty "
+                                    "and distinct from rustradio.iq.gap_samples");
+    return pmt::intern(key);
+}
 uint64_t index_value(const gr::tag_t& tag)
 {
     if (!pmt::is_uint64(tag.value))
@@ -29,18 +36,25 @@ uint64_t add_index(uint64_t index, uint64_t count)
     return index + count;
 }
 } // namespace
-align_streams::sptr align_streams::make(size_t itemsize0, size_t itemsize1)
+align_streams::sptr align_streams::make(size_t itemsize0,
+                                        size_t itemsize1,
+                                        const std::string& tag_key0,
+                                        const std::string& tag_key1)
 {
-    return gnuradio::make_block_sptr<align_streams_impl>(itemsize0, itemsize1);
+    return gnuradio::make_block_sptr<align_streams_impl>(
+        itemsize0, itemsize1, tag_key0, tag_key1);
 }
-align_streams_impl::align_streams_impl(size_t itemsize0, size_t itemsize1)
+align_streams_impl::align_streams_impl(size_t itemsize0,
+                                       size_t itemsize1,
+                                       const std::string& tag_key0,
+                                       const std::string& tag_key1)
     : gr::block("align_streams",
                 gr::io_signature::makev(
                     2, 2, { checked_itemsize(itemsize0), checked_itemsize(itemsize1) }),
                 gr::io_signature::makev(
                     2, 2, { checked_itemsize(itemsize0), checked_itemsize(itemsize1) })),
       d_itemsize{ itemsize0, itemsize1 },
-      d_index_key(pmt::intern("rustradio.iq.absolute_sample_index")),
+      d_index_keys{ checked_tag_key(tag_key0), checked_tag_key(tag_key1) },
       d_gap_key(pmt::intern("rustradio.iq.gap_samples"))
 {
     set_tag_propagation_policy(TPP_DONT);
@@ -69,7 +83,7 @@ void align_streams_impl::apply_markers(int port, const std::vector<gr::tag_t>& t
     for (const auto& tag : tags) {
         if (tag.offset != offset)
             continue;
-        if (tag.key == d_index_key) {
+        if (tag.key == d_index_keys[port]) {
             const auto value = index_value(tag);
             if (anchor && *anchor != value)
                 throw std::runtime_error("align_streams conflicting index anchors");
@@ -92,7 +106,8 @@ int align_streams_impl::segment_size(int port,
 {
     const auto offset = nitems_read(port);
     for (const auto& tag : tags)
-        if (tag.offset > offset && (tag.key == d_index_key || tag.key == d_gap_key))
+        if (tag.offset > offset &&
+            (tag.key == d_index_keys[port] || tag.key == d_gap_key))
             return static_cast<int>(tag.offset - offset);
     return available;
 }
@@ -129,7 +144,7 @@ int align_streams_impl::general_work(int noutput_items,
         if (!d_cursor[port].index) {
             int discard = available[port];
             for (const auto& tag : tags[port]) {
-                if (tag.key == d_index_key) {
+                if (tag.key == d_index_keys[port]) {
                     discard = static_cast<int>(tag.offset - first);
                     break;
                 }
@@ -166,13 +181,13 @@ int align_streams_impl::general_work(int noutput_items,
         for (auto tag : tags[port]) {
             if (tag.offset >= end)
                 break;
-            if (tag.key == d_index_key)
+            if (tag.key == d_index_keys[port])
                 has_anchor = true;
             tag.offset = add_index(written, tag.offset - first);
             add_item_tag(port, tag);
         }
         if ((!d_output_next || *d_output_next != index0) && !has_anchor)
-            add_item_tag(port, written, d_index_key, pmt::from_uint64(index0));
+            add_item_tag(port, written, d_index_keys[port], pmt::from_uint64(index0));
         advance_cursor(port, count);
     }
     d_output_next = d_cursor[0].index;

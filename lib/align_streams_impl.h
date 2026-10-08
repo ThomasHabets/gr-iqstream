@@ -10,7 +10,10 @@ namespace iqstream {
 class align_streams_impl : public align_streams
 {
 public:
-    align_streams_impl(size_t itemsize0, size_t itemsize1);
+    align_streams_impl(size_t itemsize0,
+                       size_t itemsize1,
+                       const std::string& tag_key0,
+                       const std::string& tag_key1);
     bool start() override;
     void forecast(int noutput_items, gr_vector_int& required) override;
     int general_work(int noutput_items,
@@ -30,7 +33,7 @@ private:
     const std::array<size_t, 2> d_itemsize;
     std::array<cursor, 2> d_cursor;
     std::optional<uint64_t> d_output_next;
-    pmt::pmt_t d_index_key;
+    const std::array<pmt::pmt_t, 2> d_index_keys;
     pmt::pmt_t d_gap_key;
 };
 } // namespace iqstream

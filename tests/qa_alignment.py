@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import subprocess
 import tempfile
+import yaml
 from gnuradio import blocks, gr, iqstream
 import pmt
 
@@ -21,13 +22,13 @@ def tag(offset, key, value, source=pmt.PMT_F):
     return result
 
 
-def anchor(offset, index):
-    return tag(offset, KEY, pmt.from_uint64(index))
+def anchor(offset, index, key=KEY):
+    return tag(offset, key, pmt.from_uint64(index))
 
 
-def positions(sink):
+def positions(sink, key=KEY):
     anchors = {t.offset: pmt.to_uint64(t.value) for t in sink.tags()
-               if pmt.eq(t.key, pmt.intern(KEY))}
+               if pmt.eq(t.key, pmt.intern(key))}
     result, index = [], None
     for offset in range(len(sink.data())):
         index = anchors.get(offset, index)
@@ -39,7 +40,7 @@ def positions(sink):
 
 
 class Alignment(unittest.TestCase):
-    def align(self, data0, data1, tags0, tags1, complex1=True, chunk=3, type0="f", type1=None):
+    def align(self, data0, data1, tags0, tags1, complex1=True, chunk=3, type0="f", type1=None, tag_keys=(KEY, KEY)):
         type1 = type1 or ("c" if complex1 else "f")
         sizes = {"b": gr.sizeof_char, "s": gr.sizeof_short, "i": gr.sizeof_int,
                  "f": gr.sizeof_float, "c": gr.sizeof_gr_complex}
@@ -47,14 +48,15 @@ class Alignment(unittest.TestCase):
         second = getattr(blocks, 'vector_source_' + type1)(data1, False, 1, tags1)
         out0 = getattr(blocks, 'vector_sink_' + type0)()
         out1 = getattr(blocks, 'vector_sink_' + type1)()
-        aligner = iqstream.align_streams(sizes[type0], sizes[type1])
+        overrides = {"tag_key" + str(port): key for port, key in enumerate(tag_keys) if key != KEY}
+        aligner = iqstream.align_streams(sizes[type0], sizes[type1], **overrides)
         graph = gr.top_block()
         graph.connect(first, (aligner, 0))
         graph.connect(second, (aligner, 1))
         graph.connect((aligner, 0), out0)
         graph.connect((aligner, 1), out1)
         graph.run(max_noutput_items=chunk)
-        self.assertEqual(positions(out0), positions(out1))
+        self.assertEqual(positions(out0, tag_keys[0]), positions(out1, tag_keys[1]))
         self.assertEqual(len(out0.data()), len(out1.data()))
         return out0, out1
 
@@ -127,12 +129,37 @@ class Alignment(unittest.TestCase):
                     self.assertEqual(list(a.data()), list(range(2, 10)))
                     self.assertEqual(list(b.data()), list(range(8)))
 
+    def test_independent_tag_names(self):
+        for keys in (("left.position", "right.position"), ("left.position", KEY),
+                     (KEY, "right.position")):
+            with self.subTest(keys=keys):
+                tags0 = [anchor(0, 100, keys[0]),
+                         tag(3, keys[1], pmt.from_uint64(9999)),
+                         tag(6, GAP, pmt.from_uint64(2))]
+                tags1 = [anchor(0, 103, keys[1]), anchor(5, 110, keys[1])]
+                a, b = self.align(range(12), range(12), tags0, tags1,
+                                  complex1=False, chunk=1, tag_keys=keys)
+                self.assertEqual(positions(a, keys[0]), [103, 104, 105, 110, 111, 112, 113])
+                self.assertEqual(list(a.data()), [3, 4, 5, 8, 9, 10, 11])
+                self.assertEqual(list(b.data()), [0, 1, 2, 5, 6, 7, 8])
+                other = [t for t in a.tags() if pmt.eq(t.key, pmt.intern(keys[1]))]
+                self.assertEqual(len(other), 1)
+                self.assertEqual(other[0].offset, 0)
+                self.assertEqual(pmt.to_uint64(other[0].value), 9999)
+
     def test_grc_mixed_types(self):
         root = Path(__file__).resolve().parents[1]
         with tempfile.TemporaryDirectory(prefix="iqstream-align-grc-") as temporary:
             folder = Path(temporary)
             flow = folder / "alignment.grc"
-            flow.write_text((root / "examples/align_streams.grc").read_text())
+            document = yaml.safe_load((root / "examples/align_streams.grc").read_text())
+            for block in document["blocks"]:
+                if block["name"] == "aligned":
+                    block["parameters"].update(tag_key0="first.position", tag_key1="second.position")
+                elif block["name"] in ("first", "second"):
+                    block["parameters"]["tags"] = block["parameters"]["tags"].replace(
+                        KEY, block["name"] + ".position")
+            flow.write_text(yaml.safe_dump(document))
             environment = os.environ.copy()
             environment["GRC_BLOCKS_PATH"] = ""
             environment["GR_CONF_GRC_GLOBAL_BLOCKS_PATH"] = os.pathsep.join((
@@ -148,6 +175,11 @@ class Alignment(unittest.TestCase):
             graph.run(max_noutput_items=2)
             self.assertEqual(graph.aligned.nitems_written(0), 8)
             self.assertEqual(graph.aligned.nitems_written(1), 8)
+
+    def test_invalid_tag_names(self):
+        for keys in (("", KEY), (KEY, ""), (GAP, KEY), (KEY, GAP)):
+            with self.assertRaises((ValueError, RuntimeError)):
+                iqstream.align_streams(gr.sizeof_float, gr.sizeof_float, *keys)
 
     def test_item_sizes(self):
         for sizes in ((0, 4), (4, 0), (2**31, 4)):

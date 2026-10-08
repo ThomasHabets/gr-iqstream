@@ -4,11 +4,13 @@
 #include <gnuradio/block.h>
 #include <gnuradio/iqstream/api.h>
 #include <cstddef>
+#include <string>
 
 namespace gr {
 namespace iqstream {
-/*! Align two streams using UINT64 rustradio.iq.absolute_sample_index tags.
- * Port i's output has the same item size as its input. The ports can differ.
+/*! Align two streams using independently named UINT64 index tags.
+ * Port i's output has the same item size and index tag key as its input.
+ * Defaults are rustradio.iq.absolute_sample_index on both inputs.
  * Drop samples before the first index anchor and samples with lower absolute
  * indices until both inputs agree. Indices advance once per item; gap_samples
  * tags advance the timeline before their associated retained sample. Reanchor
@@ -20,7 +22,10 @@ class IQSTREAM_API align_streams : virtual public gr::block
 {
 public:
     using sptr = std::shared_ptr<align_streams>;
-    static sptr make(size_t itemsize0, size_t itemsize1);
+    static sptr make(size_t itemsize0,
+                     size_t itemsize1,
+                     const std::string& tag_key0 = "rustradio.iq.absolute_sample_index",
+                     const std::string& tag_key1 = "rustradio.iq.absolute_sample_index");
 };
 } // namespace iqstream
 } // namespace gr

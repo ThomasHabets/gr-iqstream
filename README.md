@@ -188,7 +188,7 @@ Radio streaming ports have no item at EOF to attach them to.
 ## Synchronizing two streams
 
 Use **IQ Stream Align Streams** in Companion, or
-`iqstream.align_streams(itemsize0, itemsize1)` in Python/C++, between the two
+`iqstream.align_streams(itemsize0, itemsize1, tag_key0, tag_key1)` in Python/C++, between the two
 sources and their downstream blocks. Each output retains its input's type;
 Companion offers independent byte, short, integer, float and complex selections.
 
@@ -202,8 +202,14 @@ graph.connect((aligned, 0), real_destination)
 graph.connect((aligned, 1), complex_destination)
 ```
 
-The UINT64 `rustradio.iq.absolute_sample_index` tag anchors the absolute index of
-its associated sample. Indices advance by one per item. Samples before each
+Set **Stream 0 Sync Tag** and **Stream 1 Sync Tag** independently in Companion,
+otherwise both default to `rustradio.iq.absolute_sample_index`. In Python, pass
+`tag_key0="first.position", tag_key1="second.position"` as optional keyword
+arguments. Each output uses its own input's configured tag name for retained and
+newly inserted index anchors. Names must be nonempty and cannot be the reserved
+`rustradio.iq.gap_samples` gap-count key.
+
+The configured UINT64 sync tag anchors the absolute index of its associated sample. Indices advance by one per item. Samples before each
 input's first anchor are discarded. For example, if inputs begin at indices 100
 and 107, discard the first seven samples from the input at 100, then emit matching
 pairs beginning at 107. The block does not add latency to the input at 107 or
