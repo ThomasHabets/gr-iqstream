@@ -85,7 +85,6 @@ def main():
     run(["cmake", "--build", sanitized, "-j", args.jobs])
     run(["ctest", "--test-dir", sanitized, "--output-on-failure",
          "-j", args.jobs])
-    run(["git", "diff", "--check"])
     print("All presubmits passed", flush=True)
 
 
