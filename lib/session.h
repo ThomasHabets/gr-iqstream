@@ -2,6 +2,7 @@
 #ifndef INCLUDED_GR_IQSTREAM_SESSION_H
 #define INCLUDED_GR_IQSTREAM_SESSION_H
 #include "protocol.h"
+#include <gnuradio/stream_observer.h>
 #include <condition_variable>
 #include <chrono>
 #include <deque>
@@ -46,6 +47,8 @@ public:
                 size_t count,
                 const std::vector<gr::tag_t>& tags,
                 uint64_t local_offset);
+    // Adapter worker entry point: never waits for credit or acquisition capacity.
+    bool offer_observation(const gr::stream_event& event, uint64_t origin);
     int
     pull(void* output, int capacity, uint64_t local_offset, std::vector<gr::tag_t>& tags);
     void finish_sending();
@@ -111,6 +114,11 @@ private:
     const std::chrono::steady_clock::time_point d_open_time;
     std::chrono::steady_clock::time_point d_finish_time;
     std::chrono::steady_clock::time_point d_credit_time;
+    size_t push_locked(const void* data,
+                       size_t count,
+                       const std::vector<gr::tag_t>& tags,
+                       uint64_t local_offset);
+    void observation_gap_locked(uint64_t count);
     void drive_locked();
     void send_locked(const std::string& bytes, action kind);
     void

@@ -13,9 +13,19 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 find_package(Gnuradio 3.10.12 EXACT REQUIRED COMPONENTS runtime blocks)
+include(CheckCXXSourceCompiles)
+set(CMAKE_REQUIRED_LIBRARIES gnuradio::gnuradio-runtime)
+check_cxx_source_compiles("#include <gnuradio/stream_observer.h>
+int main() { return gr::streams().size(); }" IQSTREAM_HAVE_STREAM_OBSERVER)
+unset(CMAKE_REQUIRED_LIBRARIES)
+if(NOT IQSTREAM_HAVE_STREAM_OBSERVER)
+    message(FATAL_ERROR "GNU Radio runtime with stream observation support is required")
+endif()
 find_package(Protobuf 3.15 REQUIRED)
 find_package(gRPC 1.51 CONFIG REQUIRED)
 find_package(Threads REQUIRED)
+find_package(Boost REQUIRED)
+find_package(OpenSSL REQUIRED)
 option(ENABLE_PYTHON "Build Python bindings and GRC definitions" ON)
 option(ENABLE_TESTING "Build acceptance tests" ON)
 option(ENABLE_SANITIZERS "Enable address and undefined behavior sanitizers" OFF)
@@ -26,9 +36,9 @@ add_custom_command(OUTPUT ${PROTO_HEADER} ${CMAKE_CURRENT_BINARY_DIR}/iq_stream.
         ${CMAKE_CURRENT_SOURCE_DIR}/proto/iq_stream.proto
     DEPENDS proto/iq_stream.proto VERBATIM)
 add_library(gnuradio-iqstream SHARED lib/protocol.cc lib/session.cc lib/transport.cc
-    lib/blocks.cc lib/align_streams_impl.cc ${CMAKE_CURRENT_BINARY_DIR}/iq_stream.pb.cc)
+    lib/blocks.cc lib/http_listener.cc lib/align_streams_impl.cc ${CMAKE_CURRENT_BINARY_DIR}/iq_stream.pb.cc)
 add_library(gnuradio::iqstream ALIAS gnuradio-iqstream)
-target_compile_definitions(gnuradio-iqstream PRIVATE gnuradio_iqstream_EXPORTS)
+target_compile_definitions(gnuradio-iqstream PRIVATE gnuradio_iqstream_EXPORTS BOOST_ERROR_CODE_HEADER_ONLY)
 target_include_directories(gnuradio-iqstream PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
@@ -36,7 +46,7 @@ target_include_directories(gnuradio-iqstream PUBLIC
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/gnuradio/iqstream>
     PRIVATE lib)
 target_link_libraries(gnuradio-iqstream PUBLIC gnuradio::gnuradio-runtime protobuf::libprotobuf
-    PRIVATE gRPC::grpc++ Threads::Threads)
+    PRIVATE gRPC::grpc++ Threads::Threads Boost::headers OpenSSL::SSL OpenSSL::Crypto)
 target_compile_options(gnuradio-iqstream PRIVATE -Wall -Wextra -Wpedantic)
 set_target_properties(gnuradio-iqstream PROPERTIES VERSION ${PROJECT_VERSION} SOVERSION 0
     EXPORT_NAME iqstream)
@@ -90,16 +100,19 @@ if(ENABLE_TESTING)
     add_test(NAME alignment_cpp COMMAND qa_alignment)
     if(ENABLE_PYTHON)
         add_test(NAME flowgraphs COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/qa_flowgraphs.py)
+        add_test(NAME websocket COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/qa_websocket.py)
+        add_test(NAME catalogue COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/qa_catalogue.py)
+        add_test(NAME observation COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/qa_observation.py)
         add_test(NAME alignment COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/qa_alignment.py)
-        set_tests_properties(flowgraphs PROPERTIES ENVIRONMENT "PYTHONPATH=${CMAKE_CURRENT_BINARY_DIR}/python;LD_LIBRARY_PATH=${CMAKE_CURRENT_BINARY_DIR}:$ENV{LD_LIBRARY_PATH}")
+        set_tests_properties(flowgraphs observation catalogue websocket PROPERTIES ENVIRONMENT "PYTHONPATH=${CMAKE_CURRENT_BINARY_DIR}/python:$ENV{PYTHONPATH};LD_LIBRARY_PATH=${CMAKE_CURRENT_BINARY_DIR}:$ENV{LD_LIBRARY_PATH}")
         set_tests_properties(alignment PROPERTIES TIMEOUT 30
-            ENVIRONMENT "PYTHONPATH=${CMAKE_CURRENT_BINARY_DIR}/python;LD_LIBRARY_PATH=${CMAKE_CURRENT_BINARY_DIR}:$ENV{LD_LIBRARY_PATH}")
+            ENVIRONMENT "PYTHONPATH=${CMAKE_CURRENT_BINARY_DIR}/python:$ENV{PYTHONPATH};LD_LIBRARY_PATH=${CMAKE_CURRENT_BINARY_DIR}:$ENV{LD_LIBRARY_PATH}")
     endif()
     set_tests_properties(protocol state transport alignment_cpp PROPERTIES TIMEOUT 30)
     set_tests_properties(protocol state transport alignment_cpp PROPERTIES
         ENVIRONMENT "LD_LIBRARY_PATH=${CMAKE_CURRENT_BINARY_DIR}:$ENV{LD_LIBRARY_PATH}")
     if(ENABLE_PYTHON)
-        set_tests_properties(flowgraphs PROPERTIES TIMEOUT 90)
+        set_tests_properties(flowgraphs observation catalogue websocket PROPERTIES TIMEOUT 90)
     endif()
 endif()
 install(DIRECTORY examples/ DESTINATION ${CMAKE_INSTALL_DATADIR}/gr-iqstream/examples)

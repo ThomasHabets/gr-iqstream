@@ -6,6 +6,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import threading
+import numpy
 from gnuradio import blocks, gr, iqstream
 import pmt
 
@@ -24,12 +25,15 @@ def expected_tags():
     return result
 
 
-def run_graph(graph):
+def run_graph(graph, already_started=False):
     errors = []
 
     def run():
         try:
-            graph.run()
+            if already_started:
+                graph.wait()
+            else:
+                graph.run()
         except Exception as error:
             errors.append(error)
 
@@ -55,6 +59,30 @@ def check_process(process):
     assert process.returncode == 0, error
 
 
+class observed_source(gr.sync_block):
+    def __init__(self, data, complex_samples):
+        dtype = numpy.complex64 if complex_samples else numpy.float32
+        super().__init__(name="interop_observed", in_sig=[], out_sig=[dtype])
+        self.data = numpy.asarray(data, dtype=dtype)
+        self.release = threading.Event()
+        self.position = 0
+        # Leave the rate unknown to exercise the server fallback on both transports.
+        self.set_output_stream_name(0, "iq")
+
+    def work(self, inputs, outputs):
+        if not self.release.wait(10):
+            raise RuntimeError("interop observer did not connect")
+        if self.position == len(self.data):
+            return -1
+        count = min(len(outputs[0]), len(self.data) - self.position)
+        outputs[0][:count] = self.data[self.position:self.position + count]
+        if not self.position:
+            for tag in expected_tags():
+                self.add_item_tag(0, tag)
+        self.position += count
+        return count
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--rustradio", type=Path, required=True)
@@ -74,6 +102,8 @@ path = "main.rs"
 [dependencies]
 rustradio = {{ path = {json.dumps(str(args.rustradio.resolve()))}, default-features = false, features = ["unstable"] }}
 tokio = {{ version = "1.44", features = ["full"] }}
+tokio-tungstenite = "0.29"
+futures-util = {{ version = "0.3", features = ["sink"] }}
 '''
     (fixture / "Cargo.toml").write_text(manifest)
     subprocess.run(["cargo", "build", "--manifest-path", str(fixture / "Cargo.toml")], check=True)
@@ -95,6 +125,8 @@ tokio = {{ version = "1.44", features = ["full"] }}
         try:
             address = remote.stdout.readline().strip()
             assert address, remote.stderr.read()
+            subprocess.run([str(args.build.resolve() / "qa_transport"),
+                            "--catalogue", address], check=True, timeout=10)
             source = iqstream.source(address, "iq", layout, options)
             collected = (blocks.vector_sink_c() if complex_samples
                          else blocks.vector_sink_f())
@@ -134,7 +166,40 @@ tokio = {{ version = "1.44", features = ["full"] }}
                 remote.kill()
                 remote.wait()
             listener.shutdown()
-    print("RustRadio interoperability passed: both layouts, both directions")
+        for mode in ("observe", "observe-ws"):
+            # An ordinary GNU Radio output is downloaded directly by RustRadio.
+            listener = iqstream.server("127.0.0.1:0")
+            listener.register_all_streams(iqstream.metadata_profile.RUSTRADIO, default_sample_rate_hz=48000)
+            vector = observed_source(data, complex_samples)
+            primary = blocks.vector_sink_c() if complex_samples else blocks.vector_sink_f()
+            graph = gr.top_block()
+            graph.connect(vector, primary)
+            graph.start()
+            entries = [entry for entry in listener.streams() if entry.origin and
+                       entry.origin.block_id == vector.to_basic_block().unique_id()]
+            assert len(entries) == 1
+            assert entries[0].origin.sample_rate_hz is None
+            assert entries[0].sample_rate_hz == 48000
+            subprocess.run([str(args.build.resolve() / "qa_transport"),
+                            "--catalogue", listener.address()], check=True, timeout=10)
+            remote = subprocess.Popen([str(executable), mode, kind,
+                                       listener.address(), entries[0].name],
+                                      stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            try:
+                assert remote.stdout.readline().strip() == "connected", remote.stderr.read()
+                vector.release.set()
+                run_graph(graph, already_started=True)
+                check_process(remote)
+                assert list(primary.data()) == data
+            finally:
+                vector.release.set()
+                graph.stop()
+                graph.wait()
+                if remote.poll() is None:
+                    remote.kill()
+                    remote.wait()
+                listener.shutdown()
+    print("RustRadio interoperability passed: both layouts, both directions, catalogues and automatic gRPC/WebSocket downloads")
 
 
 if __name__ == "__main__":

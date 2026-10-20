@@ -40,6 +40,16 @@ public:
           d_options(std::move(options)),
           d_listener(std::move(listener))
     {
+        const auto typed = gr::io_signature::make_typed(
+            1,
+            1,
+            { gr::stream_type::make(layout == sample_layout::REAL
+                                        ? gr::stream_item_type::float32
+                                        : gr::stream_item_type::complex64) });
+        if constexpr (Sending)
+            this->set_input_signature(typed);
+        else
+            this->set_output_signature(typed);
         validate_options(d_options, Sending || Serving);
         require(!id.empty() && valid_utf8(id), "invalid resource identifier");
         if constexpr (Sending)

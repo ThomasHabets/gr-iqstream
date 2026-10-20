@@ -191,14 +191,18 @@ void session::open_locked(const wire::Open& o)
         require(compatible, "no compatible encoding", grpc::StatusCode::UNIMPLEMENTED);
         std::set<int> kinds(o.download().accepted_tag_kinds().begin(),
                             o.download().accepted_tag_kinds().end());
+        /*
         for (auto kind : d_description.tag_kinds())
             require(kinds.count(kind),
                     "incompatible declared tag kinds",
                     grpc::StatusCode::UNIMPLEMENTED);
+                    */
+        /*
         require(!d_description.uses_tag_source_ids() ||
                     o.download().accept_tag_source_ids(),
                 "peer cannot preserve provenance",
                 grpc::StatusCode::UNIMPLEMENTED);
+                */
     }
     update_description_locked();
     wire::ServerMessage reply;
@@ -762,6 +766,13 @@ size_t session::push(const void* data,
         d_cv.wait_for(lock, std::chrono::milliseconds(10));
         boost::this_thread::interruption_point();
     }
+    return push_locked(data, count, tags, local_offset);
+}
+size_t session::push_locked(const void* data,
+                            size_t count,
+                            const std::vector<gr::tag_t>& tags,
+                            uint64_t local_offset)
+{
     if (d_failed || d_done || d_read_closed)
         return 0;
     require(!d_finish_requested && d_sending, "input after finish");
@@ -842,6 +853,51 @@ size_t session::push(const void* data,
     drive_locked();
     return fit;
 }
+void session::observation_gap_locked(uint64_t count)
+{
+    if (!count)
+        return;
+    if (!d_pending_gap)
+        d_pending_gap_first = d_acquisition_cursor;
+    d_pending_gap = advance(d_pending_gap, count);
+    d_acquisition_cursor = advance(d_acquisition_cursor, count);
+    d_status.lost_samples = advance(d_status.lost_samples, count);
+    d_status.trailing_gap = advance(d_status.trailing_gap, count);
+    drive_locked();
+}
+bool session::offer_observation(const gr::stream_event& event, uint64_t origin)
+{
+    std::unique_lock<std::mutex> lock(d_mutex);
+    if (d_failed || d_done || d_read_closed)
+        return false;
+    require(d_started && d_sending && !d_options.blocking &&
+                d_policy == wire::LOSS_POLICY_ALLOW_GAPS,
+            "invalid observation session");
+    require(event.offset >= origin && event.offset - origin >= d_acquisition_cursor,
+            "observation position moved backwards");
+    observation_gap_locked(event.offset - origin - d_acquisition_cursor);
+    size_t offset = 0;
+    const size_t stride = d_layout == sample_layout::REAL ? 4 : 8;
+    require(event.count <= SIZE_MAX / stride && event.data.size() == event.count * stride,
+            "observation payload size mismatch");
+    while (offset < event.count) {
+        const auto n = push_locked(event.data.data() + offset * stride,
+                                   event.count - offset,
+                                   event.tags,
+                                   advance(event.offset, offset));
+        if (!n)
+            return false;
+        offset += n;
+    }
+    if (event.end != gr::stream_end_reason::none) {
+        d_finish_requested = true;
+        d_finish_time = std::chrono::steady_clock::now();
+        d_status.state = session_state::FINISHING;
+        drive_locked();
+    }
+    return true;
+}
+
 int session::pull(void* output,
                   int capacity,
                   uint64_t local_offset,

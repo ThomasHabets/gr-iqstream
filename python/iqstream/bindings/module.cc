@@ -83,11 +83,22 @@ PYBIND11_MODULE(iqstream_python, m)
                                            [](const session_status& s) {
                                                return py::bytes(s.description_bytes);
                                            });
+    py::class_<stream_listing>(m, "stream_listing")
+        .def_readonly("name", &stream_listing::name)
+        .def_readonly("layout", &stream_listing::layout)
+        .def_readonly("sample_rate_hz", &stream_listing::sample_rate_hz)
+        .def_readonly("ended", &stream_listing::ended)
+        .def_readonly("origin", &stream_listing::origin);
     py::class_<server, server::sptr>(m, "server")
         .def(py::init(&server::make),
              py::arg("address") = "127.0.0.1:50051",
              py::arg("tls") = tls_options{})
         .def("address", &server::address)
+        .def("register_all_streams",
+             py::overload_cast<metadata_profile, double>(&server::register_all_streams),
+             py::arg("profile") = metadata_profile::NATIVE,
+             py::arg("default_sample_rate_hz") = 0.0)
+        .def("streams", &server::streams)
         .def("shutdown", &server::shutdown, py::call_guard<py::gil_scoped_release>());
     bind_block<source>(m, "source", false);
     bind_block<sink>(m, "sink", false);

@@ -285,9 +285,59 @@ void malformed_peers()
     ending.state->received(end.SerializeAsString());
     CHECK(ending.state->status().state == session_state::FAILED);
 }
+void nonblocking_observation_before_credit_and_trailing_gaps()
+{
+    stream_options options;
+    options.loss = loss_policy::ALLOW_GAPS;
+    options.blocking = false;
+    options.max_in_flight_frames = 1;
+    auto state = std::make_shared<session>(false, true, sample_layout::REAL, options);
+    std::deque<wire::ServerMessage> sent;
+    state->bind(
+        [&](const std::string& bytes) {
+            wire::ServerMessage message;
+            CHECK(message.ParseFromString(bytes));
+            sent.push_back(message);
+        },
+        [] {},
+        [](grpc::Status) {},
+        [] {},
+        [&](const wire::Open&, const auto&) {
+            return resource_binding{ true, sample_layout::REAL, options, 100 };
+        });
+    peer client(false, options);
+    auto open = client.sent.front();
+    state->received(open.SerializeAsString());
+    CHECK(sent.front().has_started());
+    state->write_done(true);
+    gr::stream_event event;
+    event.offset = 100;
+    event.count = 4;
+    event.data.resize(16);
+    CHECK(state->offer_observation(event, 100));
+    event.offset = 104;
+    CHECK(state->offer_observation(event, 100));
+    event.offset = 112; // Includes loss in the core observation queue.
+    event.count = 0;
+    event.data.clear();
+    event.end = gr::stream_end_reason::completed;
+    CHECK(state->offer_observation(event, 100));
+    CHECK(state->status().lost_samples == 8);
+    wire::ClientMessage credit;
+    credit.mutable_flow_control()->set_send_limit(1);
+    state->received(credit.SerializeAsString());
+    CHECK(sent.back().frame().chunk().sample_count() == 4);
+    state->write_done(true);
+    credit.mutable_flow_control()->set_send_limit(2);
+    state->received(credit.SerializeAsString());
+    CHECK(sent.back().frame().gap().sample_count() == 8);
+    state->write_done(true);
+    CHECK(sent.back().end().next_sample() == 12);
+}
 int main()
 {
     try {
+        nonblocking_observation_before_credit_and_trailing_gaps();
         racing_and_completion();
         receiver_and_gaps();
         rustradio_negotiation();

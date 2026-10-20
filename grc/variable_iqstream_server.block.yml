@@ -10,12 +10,40 @@ parameters:
   label: TLS Options
   dtype: raw
   default: iqstream.tls_options()
+- id: observe_all
+  label: Observe All Streams
+  dtype: bool
+  default: 'False'
+- id: observation_profile
+  label: Observation Metadata Profile
+  dtype: enum
+  default: iqstream.metadata_profile.NATIVE
+  options: [iqstream.metadata_profile.NATIVE, iqstream.metadata_profile.RUSTRADIO]
+  option_labels: [Native PMT, RustRadio]
+  hide: ${ 'none' if observe_all else 'all' }
+- id: default_sample_rate
+  label: Default Sample Rate (Hz)
+  dtype: real
+  default: '0'
+  hide: ${ 'none' if observe_all else 'all' }
 value: ${ None }
 templates:
   imports: from gnuradio import iqstream
-  var_make: self.${id} = ${id} = iqstream.server(${address}, ${tls})
+  var_make: |-
+    self.${id} = ${id} = iqstream.server(${address}, ${tls})
+    % if observe_all():
+    self.${id}.register_all_streams(${observation_profile}, ${default_sample_rate})
+    % endif
 documentation: |-
   Shared listener for IQ Stream Server Source and Server Sink resources.
+  GET /iq/v1/streams serves a JSON download catalogue with browser CORS headers
+  on this same listen address (HTTPS when TLS is enabled).
   Use this variable's ID as their Server parameter. Each resource ID is unique.
   Call shutdown() to close the listener and cancel outstanding sessions.
+  Observe All Streams offers supported float/complex scalar outputs across the
+  process, without adding sinks. Default Sample Rate supplies the advertised rate
+  for observed outputs without a declared rate; zero leaves them unknown. Explicit
+  output rates and manually registered resources retain their own rates.
+  Clients must select Allow gaps. Slow clients lose samples without applying
+  backpressure to the original flowgraph.
 file_format: 1

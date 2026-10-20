@@ -14,7 +14,9 @@ blocks:
 - name: pmt_import
   id: import
   parameters:
-    imports: import pmt
+    imports: |-
+      import pmt
+      from gnuradio import gr
   states:
     state: enabled
     coordinate:

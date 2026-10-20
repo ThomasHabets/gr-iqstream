@@ -29,11 +29,13 @@ def main():
     assert len(packages) == 1, packages
     python_root = packages[0].parent.parent.parent
     environment = os.environ.copy()
-    environment["PYTHONPATH"] = str(python_root)
-    environment["LD_LIBRARY_PATH"] = str(library_dir)
+    environment["PYTHONPATH"] = os.pathsep.join((str(python_root), environment.get("PYTHONPATH", "")))
+    environment["LD_LIBRARY_PATH"] = os.pathsep.join((str(library_dir), environment.get("LD_LIBRARY_PATH", "")))
     root = Path(__file__).resolve().parents[1]
     consumer = build / "install-consumer"
-    consumer.mkdir(exist_ok=True)
+    if consumer.exists():
+        shutil.rmtree(consumer)
+    consumer.mkdir()
     (consumer / "CMakeLists.txt").write_text('''cmake_minimum_required(VERSION 3.16.3)
 project(iqstream_consumer LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)

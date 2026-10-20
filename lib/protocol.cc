@@ -83,7 +83,7 @@ void validate_options(const stream_options& o, bool sending)
                     o.profile == metadata_profile::RUSTRADIO,
                 "invalid outgoing metadata profile");
     if (sending) {
-        require(std::isfinite(o.sample_rate_hz) && o.sample_rate_hz > 0,
+        require(std::isfinite(o.sample_rate_hz) && o.sample_rate_hz >= 0,
                 "invalid sample rate");
         require(o.blocking || o.loss == loss_policy::ALLOW_GAPS,
                 "nonblocking acquisition requires ALLOW_GAPS");
@@ -419,7 +419,7 @@ void validate_description(const wire::StreamDescription& d,
                 d.encoding().layout() == expected.layout(),
             "only exact FLOAT32/LE graph layout is supported",
             grpc::StatusCode::UNIMPLEMENTED);
-    require(std::isfinite(d.sample_rate_hz()) && d.sample_rate_hz() > 0,
+    require(std::isfinite(d.sample_rate_hz()) && d.sample_rate_hz() >= 0,
             "invalid sample rate");
     require(!d.uses_terminal_tags(),
             "terminal tags unsupported",

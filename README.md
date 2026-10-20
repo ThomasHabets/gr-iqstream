@@ -1,7 +1,7 @@
 # gr-iqstream
 
-A C++ GNU Radio OOT module targeting **GNU Radio 3.10.12** (installed release
-3.10.12.0). Implements the native gRPC `rustradio.iq.v1.IqStreaming/Stream`
+A C++ GNU Radio OOT module targeting **GNU Radio 3.10.12 with the stream
+observation API** (installed release 3.10.12.0). Implements the native gRPC `rustradio.iq.v1.IqStreaming/Stream`
 protocol, with Python bindings and GNU Radio Companion blocks.
 
 Each session carries one real `float` or complex `gr_complex` stream in
@@ -20,19 +20,22 @@ defined tag kinds, convert supported values to PMT and discard unsupported tags.
 
 ## Build and install
 
-Dependencies: GNU Radio 3.10.12 development/runtime packages, a C++17 compiler,
-CMake >= 3.16.3, Protobuf >= 3.15 and `protoc`, gRPC C++ >= 1.51, and threads.
+Dependencies: GNU Radio 3.10.12 built with stream observation support, a C++17 compiler,
+CMake >= 3.16.3, Protobuf >= 3.15 and `protoc`, gRPC C++ >= 1.51, Boost headers, OpenSSL, and threads.
 Python/GRC builds also require the Python development package and pybind11 C++
 headers/CMake package >= 2.12. The Python `pybind11` module is not needed.
-All required dependencies were available in the target workspace.
+The distribution packages supply build dependencies; build the modified GNU Radio
+runtime separately and supply its prefix to CMake.
 
 On Debian 13 these packages provide the build dependencies:
 
 ```sh
 sudo apt-get install build-essential cmake ninja-build gnuradio gnuradio-dev \
-  libprotobuf-dev protobuf-compiler libgrpc++-dev pybind11-dev python3-dev
+  libprotobuf-dev protobuf-compiler libgrpc++-dev libssl-dev libboost-dev \
+  pybind11-dev python3-dev python3-websocket python3-protobuf
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
-  -DPython3_EXECUTABLE=/usr/bin/python3 -DPYTHON_EXECUTABLE=/usr/bin/python3
+  -DPython3_EXECUTABLE=/usr/bin/python3 -DPYTHON_EXECUTABLE=/usr/bin/python3 \
+  -DCMAKE_PREFIX_PATH=/path/to/gnuradio-install
 cmake --build build -j3
 ctest --test-dir build --output-on-failure
 sudo cmake --install build
@@ -278,3 +281,111 @@ verbatim. The module does not vendor modified dependencies.
 
 Code is MIT licensed; the copied schema retains RustRadio's MIT license,
 included as `proto/LICENSE.rustradio`.
+
+## Automatic discovery and downloads
+
+Build against GNU Radio with the stream observation API described in
+`gnuradio/stream_observer.h`. Configure with `CMAKE_PREFIX_PATH` pointing at that
+GNU Radio installation. For presubmits, use:
+
+```sh
+/usr/bin/python3 tools/presubmit.py --rustradio ../rustradio \
+    --gnuradio-prefix /path/to/gnuradio-install
+```
+
+Enable **Observe All Streams** on the IQ Stream Server variable in Companion,
+or enable it on an existing server in Python:
+
+```python
+server = iqstream.server("127.0.0.1:50051")
+server.register_all_streams()
+# Start the application's ordinary flowgraph without adding IQ sinks.
+for entry in server.streams():
+    print(entry.name, entry.layout, entry.sample_rate_hz, entry.origin)
+```
+
+Automatic discovery is process-wide and includes subsequently started graphs.
+It offers scalar float32 and complex64 outputs backed by supported host buffers.
+`gr.streams()` also lists other item types, vectors, unknown types and unsupported
+buffers, with the originating block ID and output port. Typed built-in and
+Python blocks supply format information; legacy size-only ports can remain
+unknown. There is no format guess based on byte size.
+
+For RustRadio clients, call
+`server.register_all_streams(iqstream.metadata_profile.RUSTRADIO)` or select
+**RustRadio** as the server's Observation Metadata Profile. The default native
+profile declares GNU Radio's complete supported metadata and provenance.
+The RustRadio profile retains its existing restrictions: structured tag values
+(such as GNU Radio `rx_time` tuples) and nondefault provenance are rejected.
+
+Clients use the advertised name as their download resource and must request
+`ALLOW_GAPS`. Downloads start at the current producer position, without replay.
+Slow or disconnected clients do not apply backpressure to the original graph.
+Bounded observer queues drop batches and export exact gap counts, including
+trailing gaps. Network work runs outside scheduler threads. One active download
+is allowed per automatic resource; subsequent sessions start at their own current
+position. Server shutdown and client cancellation detach observations without
+stopping the application graph.
+
+Default automatic resource names include the GRC block ID (or runtime block name)
+and an explicit alias when available, followed by the numeric block ID, output
+port and graph-run stream ID. For example: `gr/blocks_throttle_0 [Receiver]/42/0/7`.
+GRC supplies textual IDs automatically; hand-written flowgraphs can call
+`block.set_stream_block_id("receiver_0")` before starting. Stream-description properties also carry the producer
+name/alias, ID, port and type information. Manually registered resources retain
+their names; colliding automatic names receive a deterministic suffix. Restarting
+or reconfiguring the scheduler creates new stream IDs, so clients should list
+streams again. Producer completion ends its download; producer failures fail the
+observation session.
+
+The `rustradio.iq.v1.IqStreaming/ListStreams` unary RPC lists available downloads,
+including manually registered sinks. It reports encoding, optional rate and
+completion state. Unknown sample rates are omitted in the catalogue and encoded
+as zero in stream descriptions. Catalogue responses enforce the upstream entry
+and byte limits. No additional numeric or string wire formats are advertised.
+
+The same listener serves `GET /iq/v1/streams` over HTTP/1.1 (HTTPS when TLS is
+configured), so browsers can discover downloads without a gRPC client:
+
+```sh
+curl http://127.0.0.1:50051/iq/v1/streams
+```
+
+The response is a JSON array matching RustRadio's HTTP catalogue. Each object
+contains `name`, `messages` (false for these numeric streams), `encoding` with
+numeric `component_type`, `byte_order` and `layout`, `sample_rate_hz` (null when
+unknown), and `ended`. Names and entries match the gRPC `ListStreams` catalogue;
+upload-only resources are excluded. Automatic outputs appear when **Observe All
+Streams** is enabled. Responses include `Access-Control-Allow-Origin: *`;
+`OPTIONS` preflight permits `GET`, `HEAD` and `Content-Type`. TLS and mutual TLS
+settings apply to both HTTP and gRPC on this port. No extra listener configuration
+is required. HTTP requests have bounded headers, connections and response sizes,
+and a five-second request deadline; gRPC streams keep their existing deadlines.
+
+Browser downloads use a WebSocket upgrade at `/iq/v1/stream` on the same port
+(`ws://` normally, `wss://` with TLS). Clients must negotiate the
+`rustradio.iq.v1` subprotocol. Each binary WebSocket message is exactly one
+protobuf `ClientMessage` or `ServerMessage`, without a length prefix. The existing
+Open/Started, cumulative credit, frame, End/Complete and cancellation rules apply.
+Text messages are rejected. Fragmented binary messages and ping/pong are supported;
+message sizes and session counts remain bounded. Both manually registered
+resources and automatic observations are available, including real float32 and
+complex64 streams for the RustRadio iq-waterfall viewer. Set a positive sample
+rate on the sink or producer output before starting the graph: the waterfall
+requires a known rate even though the transport permits unknown rates.
+
+For automatic observations whose producer has no declared sample rate, set
+**Default Sample Rate (Hz)** on the IQ Stream Server variable, or use:
+
+```python
+server.register_all_streams(
+    iqstream.metadata_profile.RUSTRADIO, default_sample_rate_hz=48000)
+```
+
+The default is advertised in `server.streams()`, gRPC `ListStreams`, HTTP
+`/iq/v1/streams`, and the description negotiated for gRPC and WebSocket downloads.
+An explicit producer output rate takes precedence. Manually registered sinks keep
+their configured rates. Zero (the default) leaves missing rates unknown; other
+values must be finite and positive. Updating the default affects listings and new
+sessions; an active stream retains its negotiated rate. This setting describes
+the samples and does not resample or throttle the producer.
